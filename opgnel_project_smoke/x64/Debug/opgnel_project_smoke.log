@@ -1,0 +1,18 @@
+﻿  source.cpp
+C:\Users\PC\source\repos\opgnel_project_smoke\VectorField\opgnel_project_smoke\source.cpp(275,1): warning C4326: 'main'의 반환 형식이 'int'이어야 하는데 'void'입니다.
+NS2D.obj : warning LNK4075: '/EDITANDCONTINUE'이(가) '/INCREMENTAL:NO' 사양으로 인해 무시됩니다.
+source.obj : error LNK2019: __imp___glutInitWithExitglutInit_ATEXIT_HACK 함수에서 참조되는 확인할 수 없는 외부 기호
+source.obj : error LNK2019: __imp_glutInitDisplayModemain 함수에서 참조되는 확인할 수 없는 외부 기호
+source.obj : error LNK2019: __imp_glutInitWindowPositionmain 함수에서 참조되는 확인할 수 없는 외부 기호
+source.obj : error LNK2019: __imp_glutInitWindowSizemain 함수에서 참조되는 확인할 수 없는 외부 기호
+source.obj : error LNK2019: __imp_glutMainLoopmain 함수에서 참조되는 확인할 수 없는 외부 기호
+source.obj : error LNK2019: __imp___glutCreateWindowWithExitglutCreateWindow_ATEXIT_HACK 함수에서 참조되는 확인할 수 없는 외부 기호
+source.obj : error LNK2019: __imp_glutPostRedisplay"void __cdecl Mouse(int,int,int,int)" (?Mouse@@YAXHHHH@Z) 함수에서 참조되는 확인할 수 없는 외부 기호
+source.obj : error LNK2019: __imp_glutSwapBuffers"void __cdecl Display(void)" (?Display@@YAXXZ) 함수에서 참조되는 확인할 수 없는 외부 기호
+source.obj : error LNK2019: __imp_glutDisplayFuncmain 함수에서 참조되는 확인할 수 없는 외부 기호
+source.obj : error LNK2019: __imp_glutReshapeFuncmain 함수에서 참조되는 확인할 수 없는 외부 기호
+source.obj : error LNK2019: __imp_glutMouseFuncmain 함수에서 참조되는 확인할 수 없는 외부 기호
+source.obj : error LNK2019: __imp_glutMotionFuncmain 함수에서 참조되는 확인할 수 없는 외부 기호
+source.obj : error LNK2019: __imp_glutIdleFuncmain 함수에서 참조되는 확인할 수 없는 외부 기호
+.\lib\glut32.lib : warning LNK4272: 'x86' 라이브러리 컴퓨터 종류가 'x64' 대상 컴퓨터 종류와 충돌합니다.
+C:\Users\PC\source\repos\opgnel_project_smoke\VectorField\x64\Debug\opgnel_project_smoke.exe : fatal error LNK1120: 13개의 확인할 수 없는 외부 참조입니다.
