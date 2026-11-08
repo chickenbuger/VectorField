@@ -173,6 +173,7 @@
     <ClInclude Include="FluidGrid.h" />
     <ClInclude Include="WaterParticles.h" />
     <ClInclude Include="TwoMaterialSimulation.h" />
+    <ClInclude Include="SharpInterfaceSimulation.h" />
     <ClInclude Include="NS2D.h" />
     <ClInclude Include="Particle.h" />
     <ClInclude Include="Planet.h" />

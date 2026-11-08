@@ -1,0 +1,21 @@
+Actual OpenGL capture output. Command lines reconstruct the arguments used for each run.
+Command: run.cmd --stage 9 --capture-after 1.5 --quit-after-capture --capture-dir "C:\Users\gksdi\OneDrive\바탕 화면\벡터필드\9.정밀계면\캡처" --capture-name 01_정밀계면.png
+Capture saved (stage 9, t=1.500, k=1.00)
+Sharp-interface capture: n=48 rho_g=80 subcell=1 projection=1 pressure_view=0 hydrostatic=0 jet=1 div_before=0.248678135213 div_after=2.37833185918e-11 residual=9.56388399535e-11 iterations=275 converged=1 area=4.09840238965 initial_area=4.09840238965 corrected_error=-2.16713327599e-15 raw_error=-5.27639443333e-05 offset=-2.94599048705e-05 cfl=0.645610912696 finite=1
+Exit code: 0
+Command: run.cmd --stage 9 --capture-after 1.5 --quit-after-capture --capture-dir "C:\Users\gksdi\OneDrive\바탕 화면\벡터필드\9.정밀계면\캡처" --capture-name 02_압력분포.png --pressure-view
+Capture saved (stage 9, t=1.500, k=1.00)
+Sharp-interface capture: n=48 rho_g=80 subcell=1 projection=1 pressure_view=1 hydrostatic=0 jet=1 div_before=0.248678135213 div_after=2.37833185918e-11 residual=9.56388399535e-11 iterations=275 converged=1 area=4.09840238965 initial_area=4.09840238965 corrected_error=-2.16713327599e-15 raw_error=-5.27639443333e-05 offset=-2.94599048705e-05 cfl=0.645610912696 finite=1
+Exit code: 0
+Command: run.cmd --stage 9 --capture-after 1.5 --quit-after-capture --capture-dir "C:\Users\gksdi\OneDrive\바탕 화면\벡터필드\9.정밀계면\캡처" --capture-name 03_중점경계비교.png --interface-mode 2
+Capture saved (stage 9, t=1.500, k=1.00)
+Sharp-interface capture: n=48 rho_g=80 subcell=0 projection=1 pressure_view=0 hydrostatic=0 jet=1 div_before=0.257473814629 div_after=2.20091824953e-11 residual=8.54811151559e-11 iterations=275 converged=1 area=4.09840238965 initial_area=4.09840238965 corrected_error=-5.80791717965e-14 raw_error=-0.000290585379801 offset=-0.000171950063949 cfl=0.626187710282 finite=1
+Exit code: 0
+Command: run.cmd --stage 9 --capture-after 0.5 --quit-after-capture --capture-dir "C:\Users\gksdi\OneDrive\바탕 화면\벡터필드\9.정밀계면\캡처" --capture-name 04_정수압.png --hydrostatic --pressure-view
+Capture saved (stage 9, t=0.500, k=1.00)
+Sharp-interface capture: n=48 rho_g=80 subcell=1 projection=1 pressure_view=1 hydrostatic=1 jet=0 div_before=0.200245786473 div_after=1.64397508723e-11 residual=8.20978627001e-11 iterations=191 converged=1 area=6.2 initial_area=6.2 corrected_error=-1.20333850411e-14 raw_error=-1.20333850411e-14 offset=0 cfl=0.008175000001 finite=1
+Exit code: 0
+Command: run.cmd --stage 9 --capture-after 0.6 --quit-after-capture --capture-dir "C:\Users\gksdi\OneDrive\바탕 화면\벡터필드\9.정밀계면\캡처" --capture-name 05_투영해제.png --interface-mode 3
+Capture saved (stage 9, t=0.600, k=1.00)
+Sharp-interface capture: n=48 rho_g=80 subcell=1 projection=0 pressure_view=0 hydrostatic=0 jet=1 div_before=10.6274851495 div_after=10.6274851495 residual=0 iterations=0 converged=0 area=4.09840238965 initial_area=4.09840238965 corrected_error=-2.60055993119e-14 raw_error=-0.0153021272063 offset=-0.0177003485048 cfl=0.41432166458 finite=1
+Exit code: 0

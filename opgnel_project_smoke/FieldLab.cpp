@@ -18,11 +18,13 @@
 #include "FluidGrid.h"
 #include "WaterParticles.h"
 #include "TwoMaterialSimulation.h"
+#include "SharpInterfaceSimulation.h"
 #include "../tests/FieldMathTests.h"
 #include "../tests/DynamicsTests.h"
 #include "../tests/FluidGridTests.h"
 #include "../tests/WaterParticleTests.h"
 #include "../tests/TwoMaterialTests.h"
+#include "../tests/SharpInterfaceTests.h"
 
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "ole32.lib")
@@ -42,7 +44,13 @@ constexpr double Domain = 2.0;
 
 FieldType fieldType = FieldType::Rotation;
 int stage = 1;
-constexpr int AvailableStages = 8;
+constexpr int AvailableStages = 9;
+SharpInterfaceSimulation sharp(48);
+int requestedInterfaceMode = 1;
+bool requestedPressureView = false;
+bool requestedHydrostatic = false;
+bool pressureView = false;
+bool interfaceHydrostatic = false;
 TwoMaterialSimulation coupled(48);
 int requestedCouplingMode = 2;
 double requestedGasDensity = -1.0;
@@ -119,17 +127,19 @@ void ResetStage() {
     if (stage == 6) fluid.Clear();
     water.SetViscosity(0.025); water.SetRestDensity(1000.0); water.Reset();
     if(stage==8){coupled.Reset();SeedReactionTracer();}
+    if(stage==9){sharp.Reset();pressureView=false;interfaceHydrostatic=false;}
     liquidMouseHeld=false; reactionDemoDone=false; showGasArrows=true;
     stirDemoDone = false;
     paused = false; accumulator = 0.0; recordElapsed = 0.0;
     tracers.clear();
     for (int j = 0; j < 18; ++j) for (int i = 0; i < 18; ++i)
         tracers.push_back({{-1.4 + 2.8 * i / 17.0, -1.4 + 2.8 * j / 17.0}, {}});
-    const char* titles[] = {"", "VectorField - 01 Vector fields", "VectorField - 02 Gravity field", "VectorField - 03 Particle advection", "VectorField - 04 Advection and diffusion", "VectorField - 05 Incompressible fluid", "VectorField - 06 Interactive smoke", "VectorField - 07 Particle liquid", "VectorField - 08 Water and gas interaction"};
+    const char* titles[] = {"", "VectorField - 01 Vector fields", "VectorField - 02 Gravity field", "VectorField - 03 Particle advection", "VectorField - 04 Advection and diffusion", "VectorField - 05 Incompressible fluid", "VectorField - 06 Interactive smoke", "VectorField - 07 Particle liquid", "VectorField - 08 Water and gas interaction", "VectorField - 09 Sharp pressure interface"};
     glutSetWindowTitle(titles[stage]);
 }
 
 Vec2 CurrentField(Vec2 position) {
+    if(stage==9)return sharp.SampleVelocity((position+Vec2{2,2})/4.0);
     if(stage==8)return coupled.Gas().SampleVelocity((position+Vec2{2,2})/4.0);
     if (stage >= 4) return fluid.SampleVelocity((position + Vec2{2,2}) / 4.0);
     return stage == 2 ? GravityField(position, gravitySources, 0.4 * strength, 0.12)
@@ -269,6 +279,64 @@ void DrawWater(const WaterParticles& liquid = water, bool showProbe = true) {
     Line(PlotX,PlotY+PlotSize,PlotX+PlotSize,PlotY+PlotSize,{0.34,0.48,0.60},3.0f);
 }
 
+void DrawInterfaceTriangle(const Vec2* points, const double* phi) {
+    Vec2 crossings[3];int count=0;
+    for(int e=0;e<3;++e){
+        const int next=(e+1)%3;
+        if((phi[e]<0)!=(phi[next]<0)){
+            const double theta=std::abs(phi[e])/(std::abs(phi[e])+std::abs(phi[next]));
+            crossings[count++]=PlotPosition(points[e]+(points[next]-points[e])*theta);
+        }
+    }
+    if(count==2)Line(crossings[0].x,crossings[0].y,crossings[1].x,crossings[1].y,pressureView?Color{0.94,0.97,1.0}:Accent,2.2f);
+}
+
+void DrawSharpInterface() {
+    const int n=sharp.Size();const double cell=PlotSize/n;
+    double pressureScale=1.0;
+    if(pressureView)for(int j=1;j<=n;++j)for(int i=1;i<=n;++i)
+        pressureScale=std::max(pressureScale,std::abs(sharp.Pressure(i,j)));
+    for(int j=1;j<=n;++j)for(int i=1;i<=n;++i){
+        Color color;
+        if(pressureView){
+            const double p=std::max(-1.0,std::min(1.0,sharp.Pressure(i,j)/pressureScale));
+            color=p>=0?Color{0.15+0.78*p,0.20+0.24*p,0.27-0.16*p}
+                       :Color{0.15+0.02*p,0.20-0.35*p,0.27-0.64*p};
+        }else{
+            const double dye=1-std::exp(-1.4*sharp.Dye(i,j));
+            const double liquid=sharp.LiquidFraction(i,j);
+            const Color gas{0.065+0.68*dye,0.085+0.43*dye,0.12+0.15*dye};
+            const double speed=std::min(1.0,std::hypot(sharp.U(i,j),sharp.V(i,j))/6.0);
+            const Color waterColor{0.07+0.08*speed,0.33+0.22*speed,0.73+0.20*speed};
+            color={gas.r*(1-liquid)+waterColor.r*liquid,gas.g*(1-liquid)+waterColor.g*liquid,gas.b*(1-liquid)+waterColor.b*liquid};
+        }
+        Rect(PlotX+(i-1)*cell,PlotY+(n-j)*cell,cell+0.05,cell+0.05,color);
+    }
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(viewportX+static_cast<int>(PlotX*viewportScale),
+        windowHeight-viewportYTop-static_cast<int>((PlotY+PlotSize)*viewportScale),
+        static_cast<int>(PlotSize*viewportScale),static_cast<int>(PlotSize*viewportScale));
+    if(showGasArrows){
+        for(int j=2;j<n;j+=3)for(int i=2;i<n;i+=3){
+            const Vec2 world{-2+(i-0.5)*sharp.CellWidth(),-2+(j-0.5)*sharp.CellWidth()};
+            DrawArrow(world,{sharp.U(i,j),sharp.V(i,j)},{0.67,0.79,0.79},3*cell);
+        }
+    }
+    // Linear zero crossings on two triangles per cell avoid ambiguous contour cases.
+    for(int j=1;j<n;++j)for(int i=1;i<n;++i){
+        const Vec2 p00{-2+(i-0.5)*sharp.CellWidth(),-2+(j-0.5)*sharp.CellWidth()};
+        const Vec2 p10=p00+Vec2{sharp.CellWidth(),0},p11=p00+Vec2{sharp.CellWidth(),sharp.CellWidth()},p01=p00+Vec2{0,sharp.CellWidth()};
+        const Vec2 a[]={p00,p10,p11},b[]={p00,p11,p01};
+        const double fa[]={sharp.Phi(i,j),sharp.Phi(i+1,j),sharp.Phi(i+1,j+1)};
+        const double fb[]={sharp.Phi(i,j),sharp.Phi(i+1,j+1),sharp.Phi(i,j+1)};
+        DrawInterfaceTriangle(a,fa);DrawInterfaceTriangle(b,fb);
+    }
+    glDisable(GL_SCISSOR_TEST);
+    Rect(PlotX+10,PlotY+10,pressureView?320:300,29,{0.06,0.085,0.12});
+    Text(PlotX+20,PlotY+30,pressureView?"Pressure / mean-zero gauge / +/- "+Number(pressureScale,1):"Blue: water / amber: passive gas tracer",TextColor);
+    Line(PlotX,PlotY+PlotSize,PlotX+PlotSize,PlotY+PlotSize,{0.34,0.48,0.60},3.0f);
+}
+
 void DrawPlot() {
     Rect(PlotX, PlotY, PlotSize, PlotSize, {0.055, 0.078, 0.109});
     for (int i = 0; i <= 8; ++i) {
@@ -284,6 +352,7 @@ void DrawPlot() {
     Text(PlotX + PlotSize - 12, PlotY + PlotSize + 43, "x", Muted);
     Text(PlotX - 25, PlotY - 14, "y", Muted);
     if (stage == 7) { DrawWater(); return; }
+    if (stage == 9) { DrawSharpInterface(); return; }
 
     if (stage >= 4) {
         const FluidGrid& activeGas=stage==8?coupled.Gas():fluid;
@@ -367,6 +436,55 @@ void RestartCoupling(CouplingMode mode) {
     SeedReactionTracer();
     simulationTime=0;accumulator=0;reactionDemoDone=false;
     captureNameOverride.clear();captureAfter=-1;quitAfterCapture=false;
+}
+
+void RestartInterface(int mode, bool hydrostatic) {
+    const double density=sharp.GasDensity();const bool jet=sharp.JetEnabled();
+    sharp.Reset();sharp.SetGasDensity(density);
+    sharp.SetSubcellInterface(mode!=2);sharp.SetProjectionEnabled(mode!=3);
+    sharp.SetJetEnabled(jet);
+    interfaceHydrostatic=hydrostatic;
+    if(hydrostatic){
+        sharp.SetPhi([](Vec2 p){return p.y+0.45;});
+        sharp.SetVelocity([](Vec2){return Vec2{};});sharp.SetJetEnabled(false);
+    }
+    simulationTime=accumulator=0;
+    mouseHeld=liquidMouseHeld=false;
+    captureNameOverride.clear();captureAfter=-1;quitAfterCapture=false;
+}
+
+void DrawSharpPanel() {
+    Rect(PanelX,110,364,690,Surface);
+    Text(PanelX+22,143,"SHARP INTERFACE / TWO-PHASE PRESSURE",Muted);
+    const char* labels[]={"1  Subcell interface fraction","2  Midpoint resistance baseline","3  Pressure projection disabled"};
+    const int mode=!sharp.ProjectionEnabled()?3:sharp.SubcellInterface()?1:2;
+    for(int i=0;i<3;++i){
+        const double y=160+38.0*i;const bool active=mode==i+1;
+        Rect(PanelX+16,y,332,31,active?Color{0.11,0.24,0.25}:Color{0.086,0.12,0.16});
+        if(active)Rect(PanelX+16,y,3,31,Accent);
+        Text(PanelX+29,y+21,labels[i],active?Accent:TextColor);
+    }
+    Text(PanelX+22,298,interfaceHydrostatic?"Flat surface / hydrostatic check":"Dam release / shared MAC velocity",Muted);
+    Text(PanelX+22,323,std::string("Gas jet: ")+(sharp.JetEnabled()?"ON":"OFF")+"  /  "+(pressureView?"pressure view":"material view"),Muted);
+    Line(PanelX+22,338,PanelX+342,338,{0.16,0.21,0.27});
+    Text(PanelX+22,365,"t = "+Number(sharp.Time(),3)+" s / "+(paused?"PAUSED":"120 Hz"));
+    Text(PanelX+22,391,std::to_string(sharp.Size())+" x "+std::to_string(sharp.Size())+" MAC / rho: 1000 / "+Number(sharp.GasDensity(),1));
+    Text(PanelX+22,418,"p continuous / sigma = 0 / shared normal u",Muted);
+    Line(PanelX+22,434,PanelX+342,434,{0.16,0.21,0.27});
+    Text(PanelX+22,461,"Divergence before: "+Scientific(sharp.divergenceBeforeProjection));
+    Text(PanelX+22,487,"Divergence after:   "+Scientific(sharp.divergenceAfterProjection),sharp.ProjectionEnabled()?Accent:Color{0.98,0.70,0.28});
+    Text(PanelX+22,513,"PCG: "+std::to_string(sharp.pressureIterations)+" / converged: "+(sharp.ProjectionEnabled()?(sharp.pressureConverged?"YES":"NO"):"disabled"),Muted);
+    Text(PanelX+22,539,"Pressure residual: "+Scientific(sharp.pressureResidual),Muted);
+    Text(PanelX+22,565,"Water area: "+Number(sharp.WaterArea(),5)+" / "+Number(sharp.InitialWaterArea(),5));
+    Text(PanelX+22,591,"Area drift: "+Scientific(sharp.RelativeAreaError()),Accent);
+    Text(PanelX+22,617,"Raw area error: "+Scientific(sharp.RawAreaError()),Muted);
+    Text(PanelX+22,643,"Area offset: "+Scientific(sharp.AreaCorrectionShift()),Muted);
+    Text(PanelX+22,669,"Max speed: "+Number(sharp.MaxSpeed(),3)+" / finite: "+(sharp.IsFinite()?"YES":"NO"),Accent);
+    Line(PanelX+22,690,PanelX+342,690,{0.16,0.21,0.27});
+    Text(PanelX+22,717,"Left: gas / right: water   P: pressure",Muted);
+    Text(PanelX+22,742,"D: density  J: jet  H: flat / dam  V: arrows",Muted);
+    Text(PanelX+22,767,"Space: pause   R: reset   F9: stage 9",Muted);
+    Text(PanelX+22,791,"F12: capture / level-set volume correction",Muted);
 }
 
 void DrawCoupledPanel() {
@@ -464,6 +582,7 @@ void DrawWaterPanel() {
 }
 
 void DrawPanel() {
+    if(stage==9){DrawSharpPanel();return;}
     if(stage==8){DrawCoupledPanel();return;}
     if (stage == 7) { DrawWaterPanel(); return; }
     if (stage >= 4) { DrawFluidPanel(); return; }
@@ -508,7 +627,7 @@ void DrawPanel() {
     Line(PanelX + 22, 708, PanelX + 342, 708, {0.16, 0.21, 0.27});
     Text(PanelX + 22, 738, stage == 2 ? "Click: add / select   Drag: move   M: mass" : "1-4  preset     +/-  strength     G  grid", Muted);
     Text(PanelX + 22, 762, stage == 2 ? "Right click: remove    R: reset    +/-: G" : "N  normalize     R  reset     F12  capture", Muted);
-    Text(PanelX + 22, 786, "F1-F8: stage   Space: pause   F12: capture", Muted);
+    Text(PanelX + 22, 786, "F1-F9: stage   Space: pause   F12: capture", Muted);
 }
 
 std::wstring CaptureName() {
@@ -523,6 +642,12 @@ std::wstring CaptureName() {
         if(coupled.Mode()==CouplingMode::Off)return L"03_\uacb0\ud569\ud574\uc81c.png";
         if(coupled.Mode()==CouplingMode::OneWay)return L"02_\ub2e8\ubc29\ud5a5.png";
         return reactionDemo?L"04_\ubb3c\uc758\ubc18\uc791\uc6a9.png":L"01_\uc591\ubc29\ud5a5.png";
+    }
+    if(stage==9){
+        if(interfaceHydrostatic)return L"04_\uc815\uc218\uc555.png";
+        if(!sharp.ProjectionEnabled())return L"05_\ud22c\uc601\ud574\uc81c.png";
+        if(!sharp.SubcellInterface())return L"03_\uc911\uc810\uacbd\uacc4\ube44\uad50.png";
+        return pressureView?L"02_\uc555\ub825\ubd84\ud3ec.png":L"01_\uc815\ubc00\uacc4\uba74.png";
     }
     switch (fieldType) {
     case FieldType::Rotation: return L"01_\ud68c\uc804\uc7a5.png";
@@ -594,19 +719,23 @@ void Display() {
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     Text(54, 42, "VECTORFIELD  /  DEVELOPMENT LAB", Accent);
-    const char* headings[] = {"", "01    Vector fields", "02    Gravity field", "03    Particle advection", "04    Advection and diffusion", "05    Incompressible fluid", "06    Interactive smoke", "07    Particle liquid / water", "08    Water and gas interaction"};
+    const char* headings[] = {"", "01    Vector fields", "02    Gravity field", "03    Particle advection", "04    Advection and diffusion", "05    Incompressible fluid", "06    Interactive smoke", "07    Particle liquid / water", "08    Water and gas interaction", "09    Sharp water / gas pressure interface"};
     Text(54, 77, headings[stage], TextColor, GLUT_BITMAP_HELVETICA_18);
-    Text(54, 102, stage == 8 ? "Particle / MAC-grid velocity interpolation and conservative two-way impulses" : stage == 7 ? "Predict positions -> neighbor search -> density constraints -> viscosity" : stage >= 4 ? "Semi-Lagrangian transport / implicit diffusion / staggered velocities" : stage == 2 ? "Softened inverse-square acceleration / source superposition" : stage == 3 ? "dx/dt = u(x) / midpoint RK2 / fixed 1/120 second steps" : "Position -> vector -> magnitude -> divergence & curl", Muted);
-    Text(PanelX + 165, 45, "STAGE 0" + std::to_string(stage) + " / 08", Muted);
+    Text(54, 102, stage == 9 ? "Level set -> subcell density resistance -> variable-coefficient pressure projection" : stage == 8 ? "Particle / MAC-grid velocity interpolation and conservative two-way impulses" : stage == 7 ? "Predict positions -> neighbor search -> density constraints -> viscosity" : stage >= 4 ? "Semi-Lagrangian transport / implicit diffusion / staggered velocities" : stage == 2 ? "Softened inverse-square acceleration / source superposition" : stage == 3 ? "dx/dt = u(x) / midpoint RK2 / fixed 1/120 second steps" : "Position -> vector -> magnitude -> divergence & curl", Muted);
+    Text(PanelX + 165, 45, "STAGE 0" + std::to_string(stage) + " / 09", Muted);
     DrawPlot();
     DrawPanel();
-    Text(54, 842, stage == 8 ? "Blue: liquid. Amber: gas tracer. Exchange residual excludes gravity, wall and pressure impulses." : stage == 7 ? "2D liquid particles with gravity and density constraints. Select F8 for water / gas coupling." : stage == 4 ? "Prescribed velocity transports dye. Pressure projection is introduced in stage 5." : stage >= 5 ? "Dye is a transported tracer.  2D incompressible flow; gas compressibility is not modeled." : stage == 3 ? "Cyan: moving tracers and last 80 substeps.  Arrow field supplies velocity, not force." : "Color: low magnitude (cyan) -> high (amber).  Display length does not change F.", Muted);
+    Text(54, 842, stage == 9 ? "One velocity field, two densities. Zero surface tension. Global area correction does not enforce local mass conservation." : stage == 8 ? "Blue: liquid. Amber: gas tracer. Exchange residual excludes gravity, wall and pressure impulses." : stage == 7 ? "2D liquid particles with gravity and density constraints. Select F8 for water / gas coupling." : stage == 4 ? "Prescribed velocity transports dye. Pressure projection is introduced in stage 5." : stage >= 5 ? "Dye is a transported tracer.  2D incompressible flow; gas compressibility is not modeled." : stage == 3 ? "Cyan: moving tracers and last 80 substeps.  Arrow field supplies velocity, not force." : "Color: low magnitude (cyan) -> high (amber).  Display length does not change F.", Muted);
     Text(PanelX, 829, captureStatus, Muted);
     if (captureRequested) {
         captureRequested = false;
         const bool saved = SaveFrame();
         captureStatus = saved ? "PNG saved. F12 replaces this preset capture." : "Capture failed. Check the output folder.";
         std::printf("Capture %s (stage %d, t=%.3f, k=%.2f)\n", saved ? "saved" : "FAILED", stage, simulationTime, strength);
+        if(stage==9)std::printf("Sharp-interface capture: n=%d rho_g=%.8g subcell=%d projection=%d pressure_view=%d hydrostatic=%d jet=%d div_before=%.12g div_after=%.12g residual=%.12g iterations=%d converged=%d area=%.12g initial_area=%.12g corrected_error=%.12g raw_error=%.12g offset=%.12g cfl=%.12g finite=%d\n",
+            sharp.Size(),sharp.GasDensity(),sharp.SubcellInterface(),sharp.ProjectionEnabled(),pressureView,interfaceHydrostatic,sharp.JetEnabled(),
+            sharp.divergenceBeforeProjection,sharp.divergenceAfterProjection,sharp.pressureResidual,sharp.pressureIterations,sharp.pressureConverged,
+            sharp.WaterArea(),sharp.InitialWaterArea(),sharp.RelativeAreaError(),sharp.RawAreaError(),sharp.AreaCorrectionShift(),sharp.lastCfl,sharp.IsFinite());
         std::fflush(stdout);
         if (quitAfterCapture) { glutSwapBuffers(); std::exit(saved ? 0 : 2); }
         glutPostRedisplay();
@@ -631,6 +760,20 @@ void Reshape(int width, int height) {
 }
 
 void Keyboard(unsigned char key, int, int) {
+    if(stage==9){
+        bool handled=true;
+        const int mode=!sharp.ProjectionEnabled()?3:sharp.SubcellInterface()?1:2;
+        switch(key){
+        case '1':case '2':case '3':RestartInterface(key-'0',interfaceHydrostatic);break;
+        case 'p':case 'P':pressureView=!pressureView;break;
+        case 'v':case 'V':showGasArrows=!showGasArrows;break;
+        case 'j':case 'J':sharp.SetJetEnabled(!sharp.JetEnabled());break;
+        case 'd':case 'D':sharp.SetGasDensity(sharp.GasDensity()<2?80.0:1.2);RestartInterface(mode,interfaceHydrostatic);break;
+        case 'h':case 'H':RestartInterface(mode,!interfaceHydrostatic);break;
+        default:handled=false;
+        }
+        if(handled){glutPostRedisplay();return;}
+    }
     if(stage==8){
         bool handled=true;
         switch(key){
@@ -700,6 +843,11 @@ void Mouse(int button, int state, int x, int y) {
             if(mouseHeld)coupled.Gas().AddDye((selected.x+2)/4.0,(selected.y+2)/4.0,0.8,0.05);
             glutPostRedisplay();return;
         }
+        if(stage==9){
+            mouseHeld=button==GLUT_LEFT_BUTTON;liquidMouseHeld=button==GLUT_RIGHT_BUTTON;lastMousePosition=selected;
+            if(mouseHeld)sharp.AddDye((selected.x+2)/4.0,(selected.y+2)/4.0,0.8,0.06);
+            glutPostRedisplay();return;
+        }
         if (stage >= 4) {
             mouseHeld = button == GLUT_LEFT_BUTTON;
             lastMousePosition = selected;
@@ -722,6 +870,8 @@ void Mouse(int button, int state, int x, int y) {
                 selectedSource = nearest; draggingSource = nearest >= 0;
             }
         }
+    } else if(stage==9 && button==GLUT_LEFT_BUTTON && px>=PanelX+16 && px<=PanelX+348){
+        for(int i=0;i<3;++i)if(py>=160+38.0*i && py<=191+38.0*i)RestartInterface(i+1,interfaceHydrostatic);
     } else if(stage==8 && button==GLUT_LEFT_BUTTON && px>=PanelX+16 && px<=PanelX+348){
         for(int i=0;i<3;++i)if(py>=160+43.0*i && py<=195+43.0*i)RestartCoupling(static_cast<CouplingMode>(i));
     } else if (stage < 4 && px >= PanelX + 16 && px <= PanelX + 348) {
@@ -740,6 +890,12 @@ void Motion(int x, int y) {
     const double py = (y - viewportYTop) / viewportScale;
     Vec2 p{std::max(-2.0,std::min(2.0,(px-PlotX)/PlotSize*4.0-2.0)),
            std::max(-2.0,std::min(2.0,2.0-(py-PlotY)/PlotSize*4.0))};
+    if(stage==9 && (mouseHeld||liquidMouseHeld)){
+        const Vec2 delta=p-lastMousePosition;
+        if(liquidMouseHeld)sharp.Stir(p,delta);
+        else sharp.AddVelocity((p.x+2)/4.0,(p.y+2)/4.0,delta.x*5,delta.y*5,0.07);
+        lastMousePosition=p;selected=p;glutPostRedisplay();return;
+    }
     if(stage==8 && (mouseHeld||liquidMouseHeld)){
         const Vec2 delta=p-lastMousePosition;
         if(liquidMouseHeld)coupled.Liquid().Stir(p,delta);
@@ -789,6 +945,10 @@ void Timer(int) {
                 }
                 coupled.Step(dt);
             }
+            if(stage==9){
+                if(mouseHeld)sharp.AddDye((selected.x+2)/4.0,(selected.y+2)/4.0,24*dt,0.05);
+                sharp.Step(dt);
+            }
             if (stage >= 4 && stage <=6) {
                 if (mouseHeld) fluid.AddDye((selected.x+2)/4.0,(selected.y+2)/4.0,24.0*dt,0.05);
                 if (stage == 4) fluid.StepDye(dt,diffusion);
@@ -820,9 +980,11 @@ int Run(int argc, char** argv) {
             int failed=RunFieldMathTests();
             failed|=RunDynamicsTests(); failed|=RunFluidGridTests(); failed|=RunWaterParticleTests();
             failed|=RunTwoMaterialTests();
+            failed|=RunSharpInterfaceTests();
             return failed;
         }
         if(std::strcmp(argv[i],"--test-stage8")==0)return RunTwoMaterialTests();
+        if(std::strcmp(argv[i],"--test-stage9")==0)return RunSharpInterfaceTests();
         if (std::strcmp(argv[i], "--legacy") == 0) { LegacyMain(argc, argv); return 0; }
     }
     int wideCount = 0;
@@ -838,6 +1000,7 @@ int Run(int argc, char** argv) {
             else if(std::wstring(wideArgs[i])==L"--coupling-mode")requestedCouplingMode=std::max(0,std::min(2,_wtoi(wideArgs[++i])));
             else if(std::wstring(wideArgs[i])==L"--gas-density")requestedGasDensity=_wtof(wideArgs[++i]);
             else if(std::wstring(wideArgs[i])==L"--drag-rate")requestedDragRate=_wtof(wideArgs[++i]);
+            else if(std::wstring(wideArgs[i])==L"--interface-mode")requestedInterfaceMode=std::max(1,std::min(3,_wtoi(wideArgs[++i])));
         }
         for (int i = 1; i < wideCount; ++i) {
             if (std::wstring(wideArgs[i]) == L"--quit-after-capture") quitAfterCapture = true;
@@ -845,6 +1008,8 @@ int Run(int argc, char** argv) {
             if (std::wstring(wideArgs[i]) == L"--stir-demo") stirDemo = true;
             if(std::wstring(wideArgs[i])==L"--no-jet")requestedNoJet=true;
             if(std::wstring(wideArgs[i])==L"--reaction-demo")reactionDemo=true;
+            if(std::wstring(wideArgs[i])==L"--pressure-view")requestedPressureView=true;
+            if(std::wstring(wideArgs[i])==L"--hydrostatic")requestedHydrostatic=true;
         }
         LocalFree(wideArgs);
     }
@@ -865,6 +1030,17 @@ int Run(int argc, char** argv) {
         if(requestedGasDensity>0)coupled.SetGasDensity(requestedGasDensity);
         if(requestedDragRate>=0)coupled.SetDragRate(requestedDragRate);
         if(requestedNoJet)coupled.SetJetEnabled(false);
+    }
+    if(stage==9){
+        sharp.SetSubcellInterface(requestedInterfaceMode!=2);
+        sharp.SetProjectionEnabled(requestedInterfaceMode!=3 && !requestedNoProjection);
+        if(requestedGasDensity>0)sharp.SetGasDensity(requestedGasDensity);
+        if(requestedNoJet)sharp.SetJetEnabled(false);
+        pressureView=requestedPressureView;
+        if(requestedHydrostatic){
+            interfaceHydrostatic=true;sharp.SetPhi([](Vec2 p){return p.y+0.45;});
+            sharp.SetVelocity([](Vec2){return Vec2{};});sharp.SetJetEnabled(false);
+        }
     }
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);

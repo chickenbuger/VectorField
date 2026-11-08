@@ -1,0 +1,4 @@
+cmake_minimum_required(VERSION 3.20)
+project(Stage9IndependentInterfaceReview LANGUAGES CXX)
+add_executable(independent_interface_review IndependentInterfaceReview.cpp)
+target_compile_features(independent_interface_review PRIVATE cxx_std_14)

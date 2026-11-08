@@ -1,0 +1,46 @@
+PASS sharp interface defaults are finite and use separate material densities
+PASS sharp initial water area lies inside shared domain
+PASS shared MAC domain has closed normal walls
+PASS material display fractions stay in zero to one
+PASS SetPhi preserves a planar signed distance without reinitialization
+PASS subcell crossing fraction matches linear zero location
+PASS interface face uses integrated density resistance
+PASS pure water face retains inverse water density
+PASS pure gas face retains inverse gas density
+PASS midpoint comparison uses one half density lengths
+PASS subcell coefficient reproduces continuous piecewise-linear interface flux
+PASS subcell flux is more accurate than midpoint on off-center interface
+Sharp planar flux: exact=1, subcell=1, midpoint=1.30325925926; theta=0.678.
+PASS interface exactly on a cell center reports endpoint fraction zero
+PASS reverse cell-center endpoint reports fraction one
+PASS zero velocity produces zero pressure and no spurious flow
+PASS hydrostatic pressure matches analytic two-density column
+PASS subcell hydrostatic pressure is more accurate than midpoint
+Hydrostatic 32x32 gas density 1.2/80/1000: max sharp pressure RMS=1.36979180268e-08, max midpoint RMS=58.6744326643, max residual speed=5.87082574919e-12.
+PASS variable-density manufactured pressure is recovered up to gauge
+PASS manufactured gradient velocity projects to zero
+PASS explicit pressure residual confirms PCG convergence
+Manufactured slanted-interface pressure RMS=6.95433793598e-09, explicit relative residual=7.75364867364e-11; iterations=135.
+PASS projection removes independently summed divergence
+PASS projection preserves prescribed closed wall velocities
+PASS density-weighted actual-face kinetic energy cannot increase
+PASS public divergence agrees with independent MAC sum
+PASS public energy agrees with independently weighted face sum
+Independent face projection: divergence 3.36586048111 -> 3.11084143967e-10; kinetic energy 1255.47839936 -> 867.377592383.
+PASS default 48x48 complete 600-step evolution stays finite
+PASS complete evolution keeps both phases inside closed domain
+PASS all default pressure solves meet explicit residual tolerance
+PASS global level-set area correction meets documented reference area
+PASS default adaptive transport remains within estimated CFL target
+PASS fixed-step interface simulation reaches five seconds
+Sharp 48x48 600-step scenario: 11.3373503 s; max corrected area relative error=6.84814115212e-14, max raw reinit/advection area error=0.00249299635253, max estimated CFL=0.649837007979, max divergence=3.28495155059e-11; initial area=4.09840238965.
+PASS room-air-like density ratio stays finite in complete evolution
+PASS projection-off comparison exposes uncorrected divergence
+PASS equal material densities reduce to constant-coefficient pressure
+PASS invalid time increments leave interface state unchanged
+PASS invalid density is rejected before modifying state
+PASS invalid level-set injection is atomic
+PASS pure water retains full area without artificial offset
+PASS pure gas retains empty water area without artificial offset
+PASS CFL bound sees alternating face speeds hidden by cell averaging
+SharpInterface tests: 40 passed, 0 failed, 40 total.
