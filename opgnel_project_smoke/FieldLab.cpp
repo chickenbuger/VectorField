@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <string>
 #include <vector>
 #include "GL/glut.h"
@@ -34,6 +35,11 @@ constexpr double Domain = 2.0;
 
 FieldType fieldType = FieldType::Rotation;
 int stage = 1;
+constexpr int AvailableStages = 3;
+struct Tracer { Vec2 position; std::deque<Vec2> trail; };
+std::vector<Tracer> tracers;
+bool paused = false;
+double accumulator = 0.0;
 std::vector<GravitySource> gravitySources;
 int selectedSource = 0;
 bool draggingSource = false;
@@ -69,7 +75,12 @@ void ResetStage() {
     normalizedArrows = false; selected = {1.0, 0.5}; simulationTime = 0.0;
     gravitySources = {{{-0.65, 0.2}, 1.0}, {{0.8, -0.1}, 1.5}};
     selectedSource = 0; draggingSource = false;
-    glutSetWindowTitle(stage == 1 ? "VectorField - 01 Vector fields" : "VectorField - 02 Gravity field");
+    paused = false; accumulator = 0.0; recordElapsed = 0.0;
+    tracers.clear();
+    for (int j = 0; j < 18; ++j) for (int i = 0; i < 18; ++i)
+        tracers.push_back({{-1.4 + 2.8 * i / 17.0, -1.4 + 2.8 * j / 17.0}, {}});
+    const char* titles[] = {"", "VectorField - 01 Vector fields", "VectorField - 02 Gravity field", "VectorField - 03 Particle advection"};
+    glutSetWindowTitle(titles[stage]);
 }
 
 Vec2 CurrentField(Vec2 position) {
@@ -221,6 +232,17 @@ void DrawPlot() {
             Text(center.x + radius + 4, center.y - 6, "m=" + Number(gravitySources[i].mass, 1));
         }
     }
+    if (stage == 3) {
+        for (const auto& tracer : tracers) {
+            glColor4d(0.30, 0.82, 0.94, 0.55);
+            glBegin(GL_LINE_STRIP);
+            for (const auto& p : tracer.trail) { const Vec2 pixel = PlotPosition(p); glVertex2d(pixel.x,pixel.y); }
+            glEnd();
+        }
+        SetColor(Accent); glPointSize(4.0f); glBegin(GL_POINTS);
+        for (const auto& tracer : tracers) { const Vec2 pixel = PlotPosition(tracer.position); glVertex2d(pixel.x,pixel.y); }
+        glEnd(); glPointSize(1.0f);
+    }
     glDisable(GL_SCISSOR_TEST);
 }
 
@@ -251,8 +273,8 @@ void DrawPanel() {
         Text(PanelX + 22, 384, "G = " + Number(0.4 * strength,2) + "    eps = 0.12    sources: " + std::to_string(gravitySources.size()), Accent);
     } else Text(PanelX + 22, 384, Formula(fieldType), Accent, GLUT_BITMAP_HELVETICA_18);
     Text(PanelX + 22, 414, "Strength k                 " + Number(strength, 2));
-    Text(PanelX + 22, 440, "Grid samples              " + std::to_string(gridSize) + " x " + std::to_string(gridSize));
-    Text(PanelX + 22, 466, normalizedArrows ? "Arrow length               normalized" : "Arrow length               compressed magnitude");
+    Text(PanelX + 22, 440, stage == 3 ? "Particles                    " + std::to_string(tracers.size()) : "Grid samples              " + std::to_string(gridSize) + " x " + std::to_string(gridSize));
+    Text(PanelX + 22, 466, stage == 3 ? "t = " + Number(simulationTime,2) + " s    " + (paused ? "PAUSED" : "RK2 / 120 Hz") : (normalizedArrows ? "Arrow length               normalized" : "Arrow length               compressed magnitude"));
     Line(PanelX + 22, 488, PanelX + 342, 488, {0.16, 0.21, 0.27});
     Text(PanelX + 22, 516, "PROBE / CLICK IN THE FIELD", Muted);
     const Vec2 value = CurrentField(selected);
@@ -266,12 +288,13 @@ void DrawPanel() {
     Line(PanelX + 22, 708, PanelX + 342, 708, {0.16, 0.21, 0.27});
     Text(PanelX + 22, 738, stage == 2 ? "Click: add / select   Drag: move   M: mass" : "1-4  preset     +/-  strength     G  grid", Muted);
     Text(PanelX + 22, 762, stage == 2 ? "Right click: remove    R: reset    +/-: G" : "N  normalize     R  reset     F12  capture", Muted);
-    Text(PanelX + 22, 786, "F1-F2: stage    Tab: next    F12: capture", Muted);
+    Text(PanelX + 22, 786, "F1-F3: stage   Space: pause   F12: capture", Muted);
 }
 
 std::wstring CaptureName() {
     if (!captureNameOverride.empty()) return captureNameOverride;
     if (stage == 2) return L"01_\uc911\ub825\ud569\uc131.png";
+    if (stage == 3) return L"01_\uc785\uc790\uc774\ub3d9.png";
     switch (fieldType) {
     case FieldType::Rotation: return L"01_\ud68c\uc804\uc7a5.png";
     case FieldType::Source: return L"02_\ubc1c\uc0b0\uc7a5.png";
@@ -338,12 +361,13 @@ void Display() {
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     Text(54, 42, "VECTORFIELD  /  DEVELOPMENT LAB", Accent);
-    Text(54, 77, stage == 2 ? "02    Gravity field" : "01    Vector fields", TextColor, GLUT_BITMAP_HELVETICA_18);
-    Text(54, 102, stage == 2 ? "Softened inverse-square acceleration / source superposition" : "Position -> vector -> magnitude -> divergence & curl", Muted);
+    const char* headings[] = {"", "01    Vector fields", "02    Gravity field", "03    Particle advection"};
+    Text(54, 77, headings[stage], TextColor, GLUT_BITMAP_HELVETICA_18);
+    Text(54, 102, stage == 2 ? "Softened inverse-square acceleration / source superposition" : stage == 3 ? "dx/dt = u(x) / midpoint RK2 / fixed 1/120 second steps" : "Position -> vector -> magnitude -> divergence & curl", Muted);
     Text(PanelX + 165, 45, "STAGE 0" + std::to_string(stage) + " / 07", Muted);
     DrawPlot();
     DrawPanel();
-    Text(54, 842, "Color: low magnitude (cyan) -> high (amber).  Display length does not change F.", Muted);
+    Text(54, 842, stage == 3 ? "Cyan: moving tracers and last 80 substeps.  Arrow field supplies velocity, not force." : "Color: low magnitude (cyan) -> high (amber).  Display length does not change F.", Muted);
     Text(PanelX, 829, captureStatus, Muted);
     if (captureRequested) {
         captureRequested = false;
@@ -389,14 +413,15 @@ void Keyboard(unsigned char key, int, int) {
             mass = mass >= 4.0 ? 0.5 : mass + 0.5;
         }
         break;
-    case '\t': stage = stage == 2 ? 1 : stage + 1; ResetStage(); break;
+    case ' ': paused = !paused; break;
+    case '\t': stage = stage == AvailableStages ? 1 : stage + 1; ResetStage(); break;
     case 'r': case 'R': ResetStage(); break;
     }
     glutPostRedisplay();
 }
 
 void Special(int key, int, int) {
-    if (key == GLUT_KEY_F1 || key == GLUT_KEY_F2) { stage = key - GLUT_KEY_F1 + 1; ResetStage(); glutPostRedisplay(); }
+    if (key >= GLUT_KEY_F1 && key < GLUT_KEY_F1 + AvailableStages) { stage = key - GLUT_KEY_F1 + 1; ResetStage(); glutPostRedisplay(); }
     if (key == GLUT_KEY_F12) { captureRequested = true; glutPostRedisplay(); }
 }
 
@@ -448,9 +473,29 @@ void Motion(int x, int y) {
 
 void Timer(int) {
     const int now = glutGet(GLUT_ELAPSED_TIME);
-    recordElapsed += std::max(0, now - lastTimerTime) / 1000.0;
+    const double elapsed = std::max(0, now - lastTimerTime) / 1000.0;
+    recordElapsed += elapsed;
     lastTimerTime = now;
-    if (captureAfter >= 0.0 && recordElapsed >= captureAfter) {
+    if (stage == 3 && !paused) {
+        accumulator += std::min(0.1,elapsed);
+        const double dt = 1.0/120.0;
+        while (accumulator >= dt) {
+            for (auto& tracer : tracers) {
+                tracer.position = AdvectRK2(tracer.position, dt, fieldType, strength);
+                bool wrapped = false;
+                if (tracer.position.x > 2) { tracer.position.x -= 4; wrapped = true; }
+                if (tracer.position.x < -2) { tracer.position.x += 4; wrapped = true; }
+                if (tracer.position.y > 2) { tracer.position.y -= 4; wrapped = true; }
+                if (tracer.position.y < -2) { tracer.position.y += 4; wrapped = true; }
+                if (wrapped) tracer.trail.clear();
+                tracer.trail.push_back(tracer.position);
+                if (tracer.trail.size() > 80) tracer.trail.pop_front();
+            }
+            simulationTime += dt; accumulator -= dt;
+        }
+        glutPostRedisplay();
+    }
+    if (captureAfter >= 0.0 && (stage >= 3 ? simulationTime : recordElapsed) >= captureAfter) {
         captureAfter = -1.0; captureRequested = true; glutPostRedisplay();
     }
     glutTimerFunc(16, Timer, 0);
@@ -467,7 +512,7 @@ int Run(int argc, char** argv) {
     if (wideArgs) {
         for (int i = 1; i + 1 < wideCount; ++i) {
             if (std::wstring(wideArgs[i]) == L"--capture-dir") captureDirectory = wideArgs[++i];
-            else if (std::wstring(wideArgs[i]) == L"--stage") stage = std::max(1,std::min(2,_wtoi(wideArgs[++i])));
+            else if (std::wstring(wideArgs[i]) == L"--stage") stage = std::max(1,std::min(AvailableStages,_wtoi(wideArgs[++i])));
             else if (std::wstring(wideArgs[i]) == L"--capture-after") captureAfter = _wtof(wideArgs[++i]);
             else if (std::wstring(wideArgs[i]) == L"--capture-name") captureNameOverride = wideArgs[++i];
             else if (std::wstring(wideArgs[i]) == L"--strength") requestedStrength = _wtof(wideArgs[++i]);
