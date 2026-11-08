@@ -37,7 +37,7 @@ constexpr double Domain = 2.0;
 
 FieldType fieldType = FieldType::Rotation;
 int stage = 1;
-constexpr int AvailableStages = 4;
+constexpr int AvailableStages = 5;
 FluidGrid fluid(64);
 bool projectionEnabled = true;
 bool buoyancyEnabled = true;
