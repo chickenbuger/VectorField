@@ -271,7 +271,7 @@ void Reshape(int w, int h)
 	glLoadIdentity();
 }
 
-void main(int argc, char** argv)
+void LegacyMain(int argc, char** argv)
 {
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);

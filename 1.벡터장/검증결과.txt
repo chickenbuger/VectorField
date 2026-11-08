@@ -1,0 +1,70 @@
+PASS default vector is zero
+PASS 3-4 vector magnitude is 5
+PASS vector addition
+PASS vector subtraction
+PASS negative scalar multiplication
+PASS left scalar multiplication
+PASS scalar division
+PASS zero normalization stays finite zero
+PASS 3-4 vector normalization
+PASS negative vector normalization
+PASS large vector normalization avoids overflow
+PASS tiny vector normalization avoids underflow
+PASS nonfinite normalization has finite fallback
+PASS uniform field is position independent
+PASS rotation at (2,-3)
+PASS source at (2,-3)
+PASS saddle at (2,-3)
+PASS rotation origin is zero
+PASS source origin is zero
+PASS saddle origin is zero
+PASS rotation velocity is perpendicular to radius
+PASS source velocity points outward
+PASS uniform strength scales linearly
+PASS uniform negative strength reverses field
+PASS uniform zero strength gives zero vector
+PASS uniform divergence at h=0.010000
+PASS uniform curl at h=0.010000
+PASS uniform divergence at h=0.000100
+PASS uniform curl at h=0.000100
+PASS uniform divergence at h=0.000001
+PASS uniform curl at h=0.000001
+PASS uniform derivatives at origin
+PASS uniform derivatives scale with strength
+PASS rotation strength scales linearly
+PASS rotation negative strength reverses field
+PASS rotation zero strength gives zero vector
+PASS rotation divergence at h=0.010000
+PASS rotation curl at h=0.010000
+PASS rotation divergence at h=0.000100
+PASS rotation curl at h=0.000100
+PASS rotation divergence at h=0.000001
+PASS rotation curl at h=0.000001
+PASS rotation derivatives at origin
+PASS rotation derivatives scale with strength
+PASS source strength scales linearly
+PASS source negative strength reverses field
+PASS source zero strength gives zero vector
+PASS source divergence at h=0.010000
+PASS source curl at h=0.010000
+PASS source divergence at h=0.000100
+PASS source curl at h=0.000100
+PASS source divergence at h=0.000001
+PASS source curl at h=0.000001
+PASS source derivatives at origin
+PASS source derivatives scale with strength
+PASS saddle strength scales linearly
+PASS saddle negative strength reverses field
+PASS saddle zero strength gives zero vector
+PASS saddle divergence at h=0.010000
+PASS saddle curl at h=0.010000
+PASS saddle divergence at h=0.000100
+PASS saddle curl at h=0.000100
+PASS saddle divergence at h=0.000001
+PASS saddle curl at h=0.000001
+PASS saddle derivatives at origin
+PASS saddle derivatives scale with strength
+PASS central differences reject zero step
+PASS central differences reject negative step
+PASS central differences reject nonfinite step
+FieldMath tests: 69 passed, 0 failed, 69 total.

@@ -124,7 +124,6 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>./lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glew32.lib;glut32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -143,7 +142,21 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>GLUT_NO_LIB_PRAGMA;GLUT_DISABLE_ATEXIT_HACK;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\.deps\freeglut-$(Platform)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>freeglut.lib;opengl32.lib;glu32.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>copy /Y "$(ProjectDir)..\.deps\freeglut-$(Platform)\bin\freeglut.dll" "$(TargetDir)freeglut.dll"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="FieldLab.cpp" />
     <ClCompile Include="NS2D.cpp" />
     <ClCompile Include="Particle.cpp" />
     <ClCompile Include="Planet.cpp" />
@@ -155,6 +168,7 @@
     <ClCompile Include="WaterBall3.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="FieldMath.h" />
     <ClInclude Include="NS2D.h" />
     <ClInclude Include="Particle.h" />
     <ClInclude Include="Planet.h" />

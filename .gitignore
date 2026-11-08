@@ -30,3 +30,16 @@
 *.exe
 *.out
 *.app
+
+# Local dependencies and generated build files
+.deps/
+build/
+**/Debug/
+**/Release/
+**/x64/
+.vs/
+*.user
+*.pdb
+*.ilk
+*.idb
+*.tlog/
