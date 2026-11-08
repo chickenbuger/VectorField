@@ -89,6 +89,7 @@ void ResetStage() {
     mouseHeld = false; projectionEnabled = true; buoyancyEnabled = true; emitterEnabled = true;
     viscosity = 0.00015; diffusion = stage == 4 ? 0.001 : 0.00002;
     fluid.SeedDemo();
+    if (stage == 4) strength = 0.65;
     if (stage == 5) fluid.AddVelocity(0.52,0.5,1.2,0.5,0.16);
     if (stage == 6) fluid.Clear();
     paused = false; accumulator = 0.0; recordElapsed = 0.0;
@@ -286,7 +287,7 @@ void DrawFluidPanel() {
     Text(PanelX+22,218,stage == 4 ? "Given velocity + dye advection" : "Velocity advection + viscosity");
     Text(PanelX+22,251,stage == 4 ? "Projection: not part of this stage" : (projectionEnabled ? "Projection: ON / SOR 100" : "Projection: OFF"),stage == 4 ? Muted : Accent);
     Text(PanelX+22,284,stage == 6 ? (buoyancyEnabled ? "Buoyancy: ON" : "Buoyancy: OFF") : "Buoyancy: OFF",Muted);
-    Text(PanelX+22,317,stage == 6 ? (emitterEnabled ? "Two emitters: ON" : "Two emitters: OFF") : Formula(fieldType),Muted);
+    Text(PanelX+22,317,stage == 6 ? (emitterEnabled ? "Two emitters: ON" : "Two emitters: OFF") : stage == 4 ? std::string(Formula(fieldType)) + "  k=" + Number(strength,2) : "Velocity: simulated, not prescribed",Muted);
     Line(PanelX+22,339,PanelX+342,339,{0.16,0.21,0.27});
     Text(PanelX+22,369,"t = " + Number(simulationTime,3) + " s / " + (paused ? "PAUSED" : "120 Hz steps"));
     Text(PanelX+22,397,"Grid: 64 x 64     domain length: 4");
@@ -435,7 +436,7 @@ void Display() {
     Text(PanelX + 165, 45, "STAGE 0" + std::to_string(stage) + " / 07", Muted);
     DrawPlot();
     DrawPanel();
-    Text(54, 842, stage >= 4 ? "Dye is a transported tracer.  2D incompressible flow; gas compressibility is not modeled." : stage == 3 ? "Cyan: moving tracers and last 80 substeps.  Arrow field supplies velocity, not force." : "Color: low magnitude (cyan) -> high (amber).  Display length does not change F.", Muted);
+    Text(54, 842, stage == 4 ? "Prescribed velocity transports dye. Pressure projection is introduced in stage 5." : stage >= 5 ? "Dye is a transported tracer.  2D incompressible flow; gas compressibility is not modeled." : stage == 3 ? "Cyan: moving tracers and last 80 substeps.  Arrow field supplies velocity, not force." : "Color: low magnitude (cyan) -> high (amber).  Display length does not change F.", Muted);
     Text(PanelX, 829, captureStatus, Muted);
     if (captureRequested) {
         captureRequested = false;
@@ -491,6 +492,7 @@ void Keyboard(unsigned char key, int, int) {
     case 'r': case 'R': ResetStage(); break;
     }
     if (stage >= 4 && key >= '1' && key <= '4') fluid.SetPresetVelocity(fieldType,strength);
+    if (stage == 4 && (key == '+' || key == '=' || key == '-' || key == '_')) fluid.SetPresetVelocity(fieldType,strength);
     glutPostRedisplay();
 }
 
@@ -629,6 +631,7 @@ int Run(int argc, char** argv) {
     glutCreateWindow("VectorField - 01 Vector fields");
     ResetStage();
     if (requestedStrength > 0.0) strength = std::max(0.25,std::min(3.0,requestedStrength));
+    if (stage == 4 && requestedStrength > 0.0) fluid.SetPresetVelocity(fieldType,strength);
     if (requestedNoProjection) projectionEnabled = false;
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
