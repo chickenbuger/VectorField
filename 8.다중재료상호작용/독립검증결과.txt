@@ -1,0 +1,9 @@
+Independent review scenarios: 64 randomized near-wall cases + equilibrium + 3 modes
+Maximum relative actual-state momentum residual: 1.4551874580857375e-15
+Maximum relative kinetic energy increase: 0
+Independent exchange review failures: 0
+Default 48x48 full evolution: 600 x 1/120 s; elapsed 7.6640727999999996 s
+Default full-run finite=1 inside=1 closed_walls=1 fixed_water_mass=1
+Default full-run maximum exchange absolute residual: 5.2618524848329024e-12; relative: 3.2528772826823303e-13
+Default 48x48 Off/TwoWay at 1 s: particle position RMS 0.34329252499077401; MAC-face gas velocity RMS 0.67849435436651406
+Independent review failures: 0

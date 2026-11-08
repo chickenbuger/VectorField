@@ -1,0 +1,4 @@
+cmake_minimum_required(VERSION 3.20)
+project(Stage8IndependentCouplingReview LANGUAGES CXX)
+add_executable(independent_coupling_review IndependentCouplingReview.cpp)
+target_compile_features(independent_coupling_review PRIVATE cxx_std_14)

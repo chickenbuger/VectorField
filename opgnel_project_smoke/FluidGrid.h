@@ -28,6 +28,73 @@ public:
         return 0.5 * (v_[Index(i, j - 1)] + v_[Index(i, j)]);
     }
 
+    // Stage 8 coupling uses only dynamic interior MAC faces. Wall faces have
+    // prescribed zero normal velocity and are not finite-mass gas degrees of freedom.
+    struct MacFaceWeight { int i, j; double weight; };
+    bool IsInteriorFace(int component, int i, int j) const {
+        return component == 0 ? i >= 1 && i < n_ && j >= 1 && j <= n_
+            : component == 1 && i >= 1 && i <= n_ && j >= 1 && j < n_;
+    }
+    std::vector<MacFaceWeight> InteriorVelocityStencil(Vec2 normalized, int component) const {
+        std::vector<MacFaceWeight> stencil;
+        if (!Finite(normalized) || component < 0 || component > 1) return stencil;
+        const double x = Clamp(normalized.x, 0.0, 1.0) * n_ + (component == 1 ? 0.5 : 0.0);
+        const double y = Clamp(normalized.y, 0.0, 1.0) * n_ + (component == 0 ? 0.5 : 0.0);
+        const int i = static_cast<int>(std::floor(x)), j = static_cast<int>(std::floor(y));
+        const double sx = x - i, sy = y - j;
+        double total = 0.0;
+        for (int oy = 0; oy <= 1; ++oy) for (int ox = 0; ox <= 1; ++ox) {
+            const double w = (ox ? sx : 1.0 - sx) * (oy ? sy : 1.0 - sy);
+            if (w > 0.0 && IsInteriorFace(component, i + ox, j + oy)) {
+                stencil.push_back({i + ox, j + oy, w}); total += w;
+            }
+        }
+        if (total > 0.0) for (auto& face : stencil) face.weight /= total;
+        return stencil;
+    }
+    double MacFaceVelocity(int component, int i, int j) const {
+        if (!IsInteriorFace(component, i, j)) return 0.0;
+        return (component == 0 ? u_ : v_)[Index(i, j)];
+    }
+    // No source-speed clamp is applied here: the conservative exchange operator
+    // limits relative velocity analytically, and measures actual state changes.
+    double AddMacFaceVelocity(int component, int i, int j, double increment) {
+        if (!IsInteriorFace(component, i, j) || !std::isfinite(increment)) return 0.0;
+        double& value = (component == 0 ? u_ : v_)[Index(i, j)];
+        const double before = value;
+        if (!std::isfinite(before + increment)) return 0.0;
+        value += increment;
+        return value - before;
+    }
+    void RefreshBoundaries() { Boundary(u_, 1); Boundary(v_, 2); Boundary(dye_, 0); }
+    Vec2 DiscreteMomentum(double density) const {
+        Vec2 momentum{};
+        const double mass = density * h_ * h_;
+        for (int j = 1; j <= n_; ++j) for (int i = 1; i < n_; ++i) momentum.x += mass * u_[Index(i,j)];
+        for (int j = 1; j < n_; ++j) for (int i = 1; i <= n_; ++i) momentum.y += mass * v_[Index(i,j)];
+        return momentum;
+    }
+    double DiscreteKineticEnergy(double density) const {
+        double energy = 0.0;
+        const double mass = density * h_ * h_;
+        for (int j = 1; j <= n_; ++j) for (int i = 1; i < n_; ++i) energy += 0.5 * mass * u_[Index(i,j)] * u_[Index(i,j)];
+        for (int j = 1; j < n_; ++j) for (int i = 1; i <= n_; ++i) energy += 0.5 * mass * v_[Index(i,j)] * v_[Index(i,j)];
+        return energy;
+    }
+    // Occupancy only excludes the visual tracer. It does not change gas face
+    // masses or claim to impose an impermeable sharp liquid/air pressure boundary.
+    double ExcludeDyeFromLiquid(const std::vector<double>& occupancy) {
+        if (occupancy.size() != static_cast<std::size_t>(n_ * n_)) return 0.0;
+        double removed = 0.0;
+        for (int j = 1; j <= n_; ++j) for (int i = 1; i <= n_; ++i) {
+            double& dye = dye_[Index(i,j)];
+            const double available = Clamp((0.85 - occupancy[static_cast<std::size_t>((j-1)*n_+i-1)]) / 0.25, 0.0, 1.0);
+            const double old = dye; dye *= available; removed += old - dye;
+        }
+        Boundary(dye_, 0);
+        return removed * h_ * h_;
+    }
+
     double divergenceBeforeProjection = 0.0;
     double divergenceAfterProjection = 0.0;
     double maxDivergenceBefore = 0.0;

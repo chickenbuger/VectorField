@@ -52,6 +52,31 @@ public:
     double SimulatedTime() const { return simulatedTime_; }
     int ConstraintIterations() const { return constraintIterations_; }
 
+    // Stage 8 applies a conservative impulse directly to a particle velocity.
+    // This additive API leaves position/solver time untouched and deliberately
+    // has no speed clamp. The exchange has its own dissipative velocity bound;
+    // normal PBF integration retains its original collision/speed behavior.
+    Vec2 AddVelocityIncrement(std::size_t index, Vec2 increment) {
+        if (index >= particles_.size()) throw std::out_of_range("Water particle index is outside the state.");
+        if (!Finite(increment)) throw std::invalid_argument("Velocity increment must be finite.");
+        const Vec2 before = particles_[index].velocity;
+        const Vec2 after = before + increment;
+        if (!Finite(after)) throw std::overflow_error("Water velocity increment overflowed.");
+        particles_[index].velocity = after;
+        return after - before;
+    }
+    Vec2 Momentum() const {
+        Vec2 momentum{};
+        for (const auto& particle : particles_) momentum = momentum + particle.velocity * particleMass_;
+        return momentum;
+    }
+    double KineticEnergy() const {
+        double energy = 0.0;
+        for (const auto& particle : particles_) energy += 0.5 * particleMass_ *
+            (particle.velocity.x * particle.velocity.x + particle.velocity.y * particle.velocity.y);
+        return energy;
+    }
+
     // These are mean positive relative density excesses, not absolute errors.
     // A low-density free-surface particle must not be treated as compressed.
     double AverageDensityError() const { return averageDensityError_; }
