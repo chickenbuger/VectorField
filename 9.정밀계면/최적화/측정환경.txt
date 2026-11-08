@@ -1,0 +1,10 @@
+Measured on: 2026-11-09T02:54:26.0124390+09:00
+OS version: Microsoft Windows NT 10.0.26200.0
+Process architecture: X64
+Processor identifier: Intel64 Family 6 Model 186 Stepping 2, GenuineIntel
+Logical processors visible: 16
+Compiler: MSVC 19.44.35228.0, x64 Release, C++14, /O2 /fp:precise
+Baseline commit: 75cf82bcd3f132af372897fd5077b9a2e87cca74
+GUI rendering is excluded from benchmark Step intervals.
+No claim of background-process or CPU-temperature control.
+Optimized core SHA-256: A5719A0093029FB3F04653B0DA9635F527970D590A376F9EC9713408F70CF7F9

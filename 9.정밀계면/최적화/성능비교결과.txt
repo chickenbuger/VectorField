@@ -1,0 +1,31 @@
+Fixed-geometry paired projection rho=80: MAC-face velocity max difference=1.70632619145e-10; gauge-adjusted pressure RMS=3.25119195388e-07; relative residual baseline=8.68577787297e-11, optimized=4.3551210744e-11.
+Fixed-geometry paired projection rho=1.2: MAC-face velocity max difference=2.22257767746e-10; gauge-adjusted pressure RMS=8.32841767026e-08; relative residual baseline=9.63562142461e-11, optimized=4.81575536867e-11.
+baseline_75cf82b rho=80 trial=1: total Step CPU wall=11017.8079 ms; step p50=18.6825, p95=28.7904, max=45.8884 ms; internal substeps=1101, last-substep PCG iterations sum=170391.
+optimized rho=80 trial=1: total Step CPU wall=3442.9109 ms; step p50=5.9843, p95=8.7769, max=13.1914 ms; internal substeps=1101, last-substep PCG iterations sum=27064.
+Paired final state rho=80 trial=1: phi RMS=4.68176048158e-06, pressure RMS=0.0121595431334, u/v face RMS=1.66427961366e-05/1.56341947961e-05, area difference=3.46389583683e-14.
+optimized rho=80 trial=2: total Step CPU wall=3547.6138 ms; step p50=6.0287, p95=9.3301, max=16.6079 ms; internal substeps=1101, last-substep PCG iterations sum=27064.
+baseline_75cf82b rho=80 trial=2: total Step CPU wall=10794.0315 ms; step p50=18.692, p95=28.4503, max=52.5033 ms; internal substeps=1101, last-substep PCG iterations sum=170391.
+Paired final state rho=80 trial=2: phi RMS=4.68176048158e-06, pressure RMS=0.0121595431334, u/v face RMS=1.66427961366e-05/1.56341947961e-05, area difference=3.46389583683e-14.
+baseline_75cf82b rho=80 trial=3: total Step CPU wall=10798.3838 ms; step p50=18.5277, p95=27.6432, max=54.2111 ms; internal substeps=1101, last-substep PCG iterations sum=170391.
+optimized rho=80 trial=3: total Step CPU wall=3608.3207 ms; step p50=6.1433, p95=9.3713, max=12.0495 ms; internal substeps=1101, last-substep PCG iterations sum=27064.
+Paired final state rho=80 trial=3: phi RMS=4.68176048158e-06, pressure RMS=0.0121595431334, u/v face RMS=1.66427961366e-05/1.56341947961e-05, area difference=3.46389583683e-14.
+baseline_75cf82b rho=1.2 trial=1: total Step CPU wall=11716.8419 ms; step p50=18.7536, p95=31.699, max=94.8777 ms; internal substeps=1182, last-substep PCG iterations sum=171507.
+optimized rho=1.2 trial=1: total Step CPU wall=3759.4938 ms; step p50=6.1016, p95=10.1116, max=15.8769 ms; internal substeps=1182, last-substep PCG iterations sum=27474.
+Paired final state rho=1.2 trial=1: phi RMS=8.01890047617e-07, pressure RMS=0.00249019701676, u/v face RMS=2.08105764123e-06/1.44190641397e-06, area difference=2.6645352591e-14.
+optimized rho=1.2 trial=2: total Step CPU wall=3861.3357 ms; step p50=6.1988, p95=11.085, max=18.9502 ms; internal substeps=1182, last-substep PCG iterations sum=27474.
+baseline_75cf82b rho=1.2 trial=2: total Step CPU wall=11512.1444 ms; step p50=18.6352, p95=31.7517, max=54.6704 ms; internal substeps=1182, last-substep PCG iterations sum=171507.
+Paired final state rho=1.2 trial=2: phi RMS=8.01890047617e-07, pressure RMS=0.00249019701676, u/v face RMS=2.08105764123e-06/1.44190641397e-06, area difference=2.6645352591e-14.
+baseline_75cf82b rho=1.2 trial=3: total Step CPU wall=11555.8504 ms; step p50=18.6674, p95=32.2777, max=48.1438 ms; internal substeps=1182, last-substep PCG iterations sum=171507.
+optimized rho=1.2 trial=3: total Step CPU wall=3854.8138 ms; step p50=6.1302, p95=11.1495, max=21.384 ms; internal substeps=1182, last-substep PCG iterations sum=27474.
+Paired final state rho=1.2 trial=3: phi RMS=8.01890047617e-07, pressure RMS=0.00249019701676, u/v face RMS=2.08105764123e-06/1.44190641397e-06, area difference=2.6645352591e-14.
+Median total Step time rho=80: baseline=10798.3838 ms; optimized=3547.6138 ms; speedup=3.0438442313x; reduction=67.1468076547%.
+Median total Step time rho=1.2: baseline=11555.8504 ms; optimized=3854.8138 ms; speedup=2.99777135798x; reduction=66.6418855682%.
+Repeat determinism baseline_75cf82b rho=80 trial=2: maximum final-array difference=0.
+Repeat determinism optimized rho=80 trial=2: maximum final-array difference=0.
+Repeat determinism baseline_75cf82b rho=80 trial=3: maximum final-array difference=0.
+Repeat determinism optimized rho=80 trial=3: maximum final-array difference=0.
+Repeat determinism baseline_75cf82b rho=1.2 trial=2: maximum final-array difference=0.
+Repeat determinism optimized rho=1.2 trial=2: maximum final-array difference=0.
+Repeat determinism baseline_75cf82b rho=1.2 trial=3: maximum final-array difference=0.
+Repeat determinism optimized rho=1.2 trial=3: maximum final-array difference=0.
+Performance/paired-state validation failures: 0.

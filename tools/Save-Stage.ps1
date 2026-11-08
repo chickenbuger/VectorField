@@ -20,7 +20,7 @@ foreach ($fileName in @('build.cmd','build.ps1','run.cmd','opgnel_project_smoke.
     Copy-Item -LiteralPath "$repoRoot\$fileName" -Destination "$checkpointRoot\$fileName" -Force
 }
 Copy-Item -LiteralPath "$repoRoot\opgnel_project_smoke\FieldLab.cpp" -Destination "$stageRoot\소스\FieldLab.cpp" -Force
-foreach ($header in @('FieldMath.h','DynamicsMath.h','FluidGrid.h','WaterParticles.h','TwoMaterialSimulation.h','SharpInterfaceSimulation.h')) {
+foreach ($header in @('FieldMath.h','DynamicsMath.h','FluidGrid.h','WaterParticles.h','TwoMaterialSimulation.h','SharpInterfaceSimulation.h','FrameScheduler.h')) {
     if (Test-Path -LiteralPath "$repoRoot\opgnel_project_smoke\$header") { Copy-Item -LiteralPath "$repoRoot\opgnel_project_smoke\$header" -Destination "$stageRoot\소스\$header" -Force }
 }
 Compress-Archive -Path "$checkpointRoot\*" -DestinationPath "$stageRoot\소스\전체소스.zip" -Force

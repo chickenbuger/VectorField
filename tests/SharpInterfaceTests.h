@@ -144,6 +144,18 @@ inline int RunSharpInterfaceTests() {
     SharpInterfaceSimulation alternating(16);const double cell=alternating.CellWidth();
     alternating.SetVelocity([=](Vec2 p){return Vec2{4*std::cos(pi*(p.x+2)/cell),0};});
     check("CFL bound sees alternating face speeds hidden by cell averaging",alternating.FaceSpeedBound()>3.999999&&std::abs(alternating.U(8,8))<1e-10);
+    // Scratch reuse must not carry an old pressure correction into equilibrium.
+    SharpInterfaceSimulation reused(16);
+    reused.SetVelocity([](Vec2 p){return Vec2{std::sin(2.3*p.x),std::cos(1.7*p.y)};});
+    reused.ProjectOnly(dt);reused.SetVelocity([](Vec2){return Vec2{};});reused.ProjectOnly(dt);
+    double restPressure=0;
+    for(int j=1;j<=16;++j)for(int i=1;i<=16;++i)restPressure=(std::max)(restPressure,std::abs(reused.Pressure(i,j)));
+    check("reused pressure workspace clears a previous nonzero correction",reused.IsFinite()&&reused.pressureConverged&&reused.MaxSpeed()<1e-13&&restPressure<1e-13);
+    SharpInterfaceSimulation contrast(16);contrast.SetLiquidDensity(5000);contrast.SetGasDensity(0.1);
+    contrast.SetPhi([](Vec2 p){return std::hypot(p.x+0.19,p.y-0.21)-0.83;});
+    contrast.SetVelocity([](Vec2 p){return Vec2{std::sin(2.1*p.x+0.4*p.y),std::cos(1.9*p.y-0.2*p.x)};});
+    const double contrastBefore=ActualDivergence(contrast),contrastEnergy=ActualEnergy(contrast);contrast.ProjectOnly(dt);
+    check("MIC pressure solve handles the supported extreme density contrast",contrast.IsFinite()&&contrast.pressureConverged&&Closed(contrast)&&ActualDivergence(contrast)<contrastBefore*1e-7&&ActualEnergy(contrast)<=contrastEnergy*(1+1e-10));
     std::cout<<"SharpInterface tests: "<<passed<<" passed, "<<failed<<" failed, "<<passed+failed<<" total.\n";
     return failed?1:0;
 }

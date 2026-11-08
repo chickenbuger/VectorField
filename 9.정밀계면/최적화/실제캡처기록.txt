@@ -1,0 +1,4 @@
+Capture saved (stage 9, t=4.067, k=1.00)
+Sharp-interface capture: n=48 rho_g=80 subcell=1 projection=1 pressure_view=0 hydrostatic=0 jet=1 div_before=0.13031418845 div_after=8.02074138857e-12 residual=6.15494196818e-11 iterations=45 converged=1 area=4.09840238965 initial_area=4.09840238965 corrected_error=3.03398658638e-15 raw_error=9.37438011379e-05 offset=6.83702303756e-05 cfl=0.406237291413 finite=1
+Capture saved (stage 9, t=13.542, k=1.00)
+Sharp-interface capture: n=48 rho_g=80 subcell=1 projection=1 pressure_view=1 hydrostatic=0 jet=1 div_before=0.1079273949 div_after=6.153942273e-12 residual=5.70189495533e-11 iterations=45 converged=1 area=4.09840238965 initial_area=4.09840238965 corrected_error=-3.16401458294e-14 raw_error=1.41855659918e-06 offset=1.4534539711e-06 cfl=0.370938116468 finite=1

@@ -1,0 +1,14 @@
+Independent random projections: 48; checked crossing faces: 1488
+Maximum relative beta error: 0; theta absolute error: 0
+Maximum piecewise-linear continuous-pressure transmission flux error: 2.9976021664879227e-15
+Maximum post/pre divergence ratio: 9.82451632203965e-11; relative kinetic energy increase: 0
+Maximum reported versus actual divergence RMS difference: 0
+Cell-center interface endpoint cases: 2.
+Manufactured pressure cases: 6; max postprojection speed: 1.4848539064971078e-12; max pressure-impulse gauge error: 9.9326484401729073e-12
+Hydrostatic cases: 6; max speed: 7.9680012587957094e-12; max pressure-impulse gauge error: 8.1091755532725074e-10
+Matched hydrostatic pressure n=16 rho_g=1.2: midpoint error=5.1899988939792721; subcell error=3.8019010162315681e-10
+Matched hydrostatic pressure n=32 rho_g=1.2: midpoint error=0.52053086260158921; subcell error=1.021049911287264e-10
+Matched hydrostatic pressure n=48 rho_g=1.2: midpoint error=1.312100670880362; subcell error=7.5438322255649837e-11
+Full 48x48 evolution rho_g=80: 600 x 1/120 s; elapsed 3.5817966000000001 s; finite=1 closed_walls=1 bounded_fraction=1 all_final_substep_pcg_converged=1; max divergence=3.5205451765018098e-11; max relative corrected reconstructed water-area drift=6.7181131555620751e-14; max face speed=12.556805435614496; max absolute pre-correction relative area error=0.0024929963525261202; max absolute correction shift=0.0015070205752560164
+Full 48x48 evolution rho_g=1.2: 600 x 1/120 s; elapsed 3.8139495000000001 s; finite=1 closed_walls=1 bounded_fraction=1 all_final_substep_pcg_converged=1; max divergence=3.7767970908437912e-11; max relative corrected reconstructed water-area drift=6.4580571624435426e-14; max face speed=22.021497417428957; max absolute pre-correction relative area error=0.0024929963525261202; max absolute correction shift=0.0015070205752560164
+Independent interface review: 70 checks, 0 failures.

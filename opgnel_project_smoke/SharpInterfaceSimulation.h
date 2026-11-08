@@ -12,11 +12,22 @@ namespace fieldlab {
 // is continuous (surface tension = 0); only its normal derivative changes.
 // The level set is not a conservative VOF mass/flux representation.
 class SharpInterfaceSimulation {
+    struct Workspace {
+        std::vector<double> b,q,r,z,d,ad,diag,oldU,oldV,oldPhi,oldDye,distance,icInverse,icLeft,icBottom,forward;
+        std::vector<unsigned char> fixed;
+        std::vector<std::size_t> areaBand;
+        explicit Workspace(std::size_t count)
+            : b(count),q(count),r(count),z(count),d(count),ad(count),diag(count),
+              oldU(count),oldV(count),oldPhi(count),oldDye(count),distance(count),
+              icInverse(count),icLeft(count),icBottom(count),forward(count),fixed(count) {
+            areaBand.reserve(count);
+        }
+    };
 public:
     explicit SharpInterfaceSimulation(int n=48)
         : n_((std::max)(8,(std::min)(128,n))), s_(n_+2), h_(4.0/n_),
           phi_(Count()), u_(Count()), v_(Count()), dye_(Count()), pressure_(Count()),
-          bx_(Count()), by_(Count()) { Reset(); }
+          bx_(Count()), by_(Count()), work_(Count()) { Reset(); }
 
     int Size() const { return n_; }
     double CellWidth() const { return h_; }
@@ -163,7 +174,9 @@ public:
     void ProjectOnly(double dt=1.0/120.0) {
         if(!(dt>0)||!std::isfinite(dt))return;
         VelocityBoundary();BuildCoefficients();divergenceBeforeProjection=DivergenceRms();
-        std::vector<double> b(Count(),0),q(Count(),0),r(Count(),0),z(Count(),0),d(Count(),0),ad(Count(),0),diag(Count(),0);
+        auto& b=work_.b;auto& q=work_.q;auto& r=work_.r;auto& z=work_.z;
+        auto& d=work_.d;auto& ad=work_.ad;auto& diag=work_.diag;
+        std::fill(q.begin(),q.end(),0.0);
         for(int j=1;j<=n_;++j)for(int i=1;i<=n_;++i) {
             const auto k=I(i,j);b[k]=-Div(i,j);
             diag[k]=((i>1?bx_[I(i-1,j)]:0)+(i<n_?bx_[I(i,j)]:0)
@@ -171,7 +184,8 @@ public:
         }
         ZeroMean(b);r=b;const double bnorm=std::sqrt(Dot(b,b));
         const double tolerance=(std::max)(1e-11,1e-10*bnorm);
-        for(int j=1;j<=n_;++j)for(int i=1;i<=n_;++i)z[I(i,j)]=r[I(i,j)]/diag[I(i,j)];
+        BuildModifiedIncompleteCholesky(diag);
+        ApplyPreconditioner(r,z);
         ZeroMean(z);d=z;double rz=Dot(r,z);pressureIterations=0;
         double norm=bnorm;
         for(int iteration=0;iteration<1000 && norm>tolerance;++iteration) {
@@ -181,7 +195,7 @@ public:
             for(int j=1;j<=n_;++j)for(int i=1;i<=n_;++i){const auto k=I(i,j);q[k]+=alpha*d[k];r[k]-=alpha*ad[k];}
             ZeroMean(r);norm=std::sqrt(Dot(r,r));pressureIterations=iteration+1;
             if(norm<=tolerance)break;
-            for(int j=1;j<=n_;++j)for(int i=1;i<=n_;++i)z[I(i,j)]=r[I(i,j)]/diag[I(i,j)];
+            ApplyPreconditioner(r,z);
             ZeroMean(z);const double next=Dot(r,z),beta=next/rz;rz=next;
             for(int j=1;j<=n_;++j)for(int i=1;i<=n_;++i)d[I(i,j)]=z[I(i,j)]+beta*d[I(i,j)];
             ZeroMean(d);
@@ -218,6 +232,7 @@ private:
     bool subcell_=true,projection_=true,jet_=true;Vec2 gravity_{0,-9.81};
     double initialArea_=0,rawAreaError_=0,areaShift_=0;
     std::vector<double> phi_,u_,v_,dye_,pressure_,bx_,by_;
+    Workspace work_;
     std::size_t Count() const { return static_cast<std::size_t>(s_*s_); }
     std::size_t I(int i,int j) const { return static_cast<std::size_t>(j*s_+i); }
     int Cell(int i) const { return (std::max)(1,(std::min)(n_,i)); }
@@ -276,6 +291,41 @@ private:
             out[k]=value/(h_*h_);
         }
     }
+    // Modified IC(0) keeps the original lower-neighbor sparsity. It approximates the
+    // pressure matrix only inside PCG; A, the convergence tolerance and the
+    // final explicitly recomputed residual remain unchanged.
+    void BuildModifiedIncompleteCholesky(const std::vector<double>& diagonal) {
+        auto& inverse=work_.icInverse;auto& left=work_.icLeft;auto& bottom=work_.icBottom;
+        const double inverseH2=1.0/(h_*h_);
+        for(int j=1;j<=n_;++j)for(int i=1;i<=n_;++i) {
+            const auto k=I(i,j);
+            left[k]=i>1?-bx_[I(i-1,j)]*inverseH2*inverse[I(i-1,j)]:0.0;
+            bottom[k]=j>1?-by_[I(i,j-1)]*inverseH2*inverse[I(i,j-1)]:0.0;
+            const double droppedLeft=i>1&&j<n_?bx_[I(i-1,j)]*by_[I(i-1,j)]*inverseH2*inverseH2*inverse[I(i-1,j)]*inverse[I(i-1,j)]:0.0;
+            const double droppedBottom=j>1&&i<n_?by_[I(i,j-1)]*bx_[I(i,j-1)]*inverseH2*inverseH2*inverse[I(i,j-1)]*inverse[I(i,j-1)]:0.0;
+            double reduced=diagonal[k]-left[k]*left[k]-bottom[k]*bottom[k]-0.97*(droppedLeft+droppedBottom);
+            // A diagonal fallback protects the auxiliary factor at extreme
+            // density contrasts and the Neumann nullspace; it does not modify A.
+            if(reduced<0.25*diagonal[k])reduced=diagonal[k];
+            inverse[k]=1.0/std::sqrt(reduced);
+        }
+    }
+    void ApplyPreconditioner(const std::vector<double>& residual,std::vector<double>& result) {
+        const auto& inverse=work_.icInverse;const auto& left=work_.icLeft;const auto& bottom=work_.icBottom;
+        auto& forward=work_.forward;
+        for(int j=1;j<=n_;++j)for(int i=1;i<=n_;++i) {
+            const auto k=I(i,j);double value=residual[k];
+            if(i>1)value-=left[k]*forward[I(i-1,j)];
+            if(j>1)value-=bottom[k]*forward[I(i,j-1)];
+            forward[k]=value*inverse[k];
+        }
+        for(int j=n_;j>=1;--j)for(int i=n_;i>=1;--i) {
+            const auto k=I(i,j);double value=forward[k];
+            if(i<n_)value-=left[I(i+1,j)]*result[I(i+1,j)];
+            if(j<n_)value-=bottom[I(i,j+1)]*result[I(i,j+1)];
+            result[k]=value*inverse[k];
+        }
+    }
     double Fraction(double phi) const {
         const double eps=h_;if(phi<=-eps)return 1;if(phi>=eps)return 0;
         const double pi=3.14159265358979323846;
@@ -285,7 +335,8 @@ private:
         double area=0;for(int j=1;j<=n_;++j)for(int i=1;i<=n_;++i)area+=Fraction(phi_[I(i,j)]+shift);return area*h_*h_;
     }
     void Reinitialize() {
-        std::vector<double> d(Count(),8.0);std::vector<unsigned char> fixed(Count(),0);
+        auto& d=work_.distance;auto& fixed=work_.fixed;
+        std::fill(d.begin(),d.end(),8.0);std::fill(fixed.begin(),fixed.end(),static_cast<unsigned char>(0));
         for(int j=1;j<=n_;++j)for(int i=1;i<=n_;++i) {
             const auto k=I(i,j);const double p=phi_[k];
             for(const Vec2 offset:{Vec2{-1,0},Vec2{1,0},Vec2{0,-1},Vec2{0,1}}) {
@@ -312,14 +363,27 @@ private:
         rawAreaError_=(WaterArea()-initialArea_)/(std::max)(initialArea_,1e-12);
         areaShift_=0;
         if(std::abs(rawAreaError_)<1e-12)return;
+        // For every permitted shift, |phi| >= 1.5*h has a constant fraction.
+        // Evaluate only the remaining band in the unchanged 40 bisections.
+        auto& band=work_.areaBand;band.clear();double fullWater=0;
+        for(int j=1;j<=n_;++j)for(int i=1;i<=n_;++i) {
+            const auto k=I(i,j);const double p=phi_[k];
+            if(p<=-1.5*h_)fullWater+=1.0;
+            else if(p<1.5*h_)band.push_back(k);
+        }
+        const auto bandArea=[&](double shift) {
+            double area=fullWater;for(const auto k:band)area+=Fraction(phi_[k]+shift);
+            return area*h_*h_;
+        };
         double lo=-0.5*h_,hi=0.5*h_;
-        for(int iteration=0;iteration<40;++iteration){const double mid=0.5*(lo+hi);if(AreaAtOffset(mid)>initialArea_)lo=mid;else hi=mid;}
+        for(int iteration=0;iteration<40;++iteration){const double mid=0.5*(lo+hi);if(bandArea(mid)>initialArea_)lo=mid;else hi=mid;}
         areaShift_=0.5*(lo+hi);
         for(int j=1;j<=n_;++j)for(int i=1;i<=n_;++i)phi_[I(i,j)]+=areaShift_;
         ScalarBoundary(phi_);
     }
     void Substep(double dt) {
-        const auto oldU=u_,oldV=v_,oldPhi=phi_,oldDye=dye_;
+        auto& oldU=work_.oldU;auto& oldV=work_.oldV;auto& oldPhi=work_.oldPhi;auto& oldDye=work_.oldDye;
+        oldU=u_;oldV=v_;oldPhi=phi_;oldDye=dye_;
         // Advect material with the previous projected velocity (RK2 backtrace).
         for(int j=1;j<=n_;++j)for(int i=1;i<=n_;++i) {
             const Vec2 p{(i-0.5)/n_,(j-0.5)/n_};
@@ -327,7 +391,7 @@ private:
             const Vec2 back=p-SampleVelocityFrom(oldU,oldV,mid)*(dt/4.0);
             phi_[I(i,j)]=Bilinear(oldPhi,back.x*n_+0.5,back.y*n_+0.5);
         }
-        ScalarBoundary(phi_);Reinitialize();CorrectArea();BuildCoefficients();
+        ScalarBoundary(phi_);Reinitialize();CorrectArea();
         for(int j=1;j<=n_;++j)for(int i=1;i<n_;++i) {
             const Vec2 p{double(i)/n_,(j-0.5)/n_};const Vec2 back=p-SampleVelocityFrom(oldU,oldV,p)*(dt/4.0);
             u_[I(i,j)]=SampleVelocityFrom(oldU,oldV,back).x+dt*gravity_.x;
@@ -339,7 +403,7 @@ private:
         VelocityBoundary();
         if(jet_){AddVelocity(0.84,0.37,-25*dt,4*dt,0.11);AddDye(0.84,0.37,3*dt,0.09);}
         if(projection_)ProjectOnly(dt);
-        else {std::fill(pressure_.begin(),pressure_.end(),0.0);divergenceBeforeProjection=divergenceAfterProjection=DivergenceRms();pressureResidual=0;pressureIterations=0;pressureConverged=false;}
+        else {BuildCoefficients();std::fill(pressure_.begin(),pressure_.end(),0.0);divergenceBeforeProjection=divergenceAfterProjection=DivergenceRms();pressureResidual=0;pressureIterations=0;pressureConverged=false;}
         // Passive gas tracer, with material clipping separate from pressure.
         for(int j=1;j<=n_;++j)for(int i=1;i<=n_;++i) {
             const Vec2 p{(i-0.5)/n_,(j-0.5)/n_};const Vec2 back=p-SampleVelocity(p)*(dt/4.0);

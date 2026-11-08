@@ -1,0 +1,7 @@
+baseline rho=80 steps=300 elapsed=5.4960793 final-substep-iterations-sum=85248 maxDiv=3.2849515505926e-11 maxArea=6.8481411521213e-14 valid=1
+storage-band rho=80 steps=300 elapsed=5.3259559 final-substep-iterations-sum=85248 maxDiv=3.2849515505926e-11 maxArea=6.8481411521213e-14 valid=1
+storage-band-IC0 rho=80 steps=300 elapsed=2.8532673 final-substep-iterations-sum=26003 maxDiv=3.0541052106307e-11 maxArea=6.913155150401e-14 valid=1
+storage-band-MIC0 rho=80 steps=300 elapsed=1.7912378 final-substep-iterations-sum=13613 maxDiv=3.5205451765018e-11 maxArea=6.7181131555621e-14 valid=1
+baseline/storage final phi RMS=8.4817093301394e-15 velocity RMS=1.513063337624e-14 pressure RMS=2.5844092809999e-11
+baseline/IC0 final phi RMS=6.8104407348291e-10 velocity RMS=2.3008110724709e-09 pressure RMS=1.857888648693e-06
+baseline/MIC0 final phi RMS=5.5033432548909e-09 velocity RMS=1.8403974880197e-08 pressure RMS=1.5049263877202e-05

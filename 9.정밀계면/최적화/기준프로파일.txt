@@ -1,0 +1,10 @@
+Baseline 75cf82b instrumented 48x48 rho_g=80: 10590.3166 ms, 1101 internal substeps.
+snapshots: 31.6262 ms (0.298633187227%).
+phi_advection: 160.6294 ms (1.51675729883%).
+reinitialization: 465.4933 ms (4.39546160499%).
+area_correction: 218.8277 ms (2.06629988758%).
+face_coefficients: 27.8568 ms (0.263040294754%).
+velocity_advection_and_sources: 223.92 ms (2.11438438016%).
+pressure_projection: 9336.1942 ms (88.157838454%).
+dye_transport: 105.5512 ms (0.996676529954%).
+finite=1 time=5 last_pcg_converged=1

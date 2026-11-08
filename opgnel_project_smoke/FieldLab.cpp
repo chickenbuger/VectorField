@@ -12,6 +12,7 @@
 #include <deque>
 #include <string>
 #include <vector>
+#include <chrono>
 #include "GL/glut.h"
 #include "FieldMath.h"
 #include "DynamicsMath.h"
@@ -19,12 +20,14 @@
 #include "WaterParticles.h"
 #include "TwoMaterialSimulation.h"
 #include "SharpInterfaceSimulation.h"
+#include "FrameScheduler.h"
 #include "../tests/FieldMathTests.h"
 #include "../tests/DynamicsTests.h"
 #include "../tests/FluidGridTests.h"
 #include "../tests/WaterParticleTests.h"
 #include "../tests/TwoMaterialTests.h"
 #include "../tests/SharpInterfaceTests.h"
+#include "../tests/FrameSchedulerTests.h"
 
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "ole32.lib")
@@ -76,7 +79,14 @@ bool requestedNoProjection = false;
 struct Tracer { Vec2 position; std::deque<Vec2> trail; };
 std::vector<Tracer> tracers;
 bool paused = false;
-double accumulator = 0.0;
+FrameScheduler frameScheduler;
+bool legacyFrameLoop=false,legacyGridRender=false;
+double lastPhysicsCpuMs=0,lastTimerCpuMs=0,lastDrawCpuMs=0;
+int lastPhysicsSteps=0;
+std::wstring profileLogPath;
+int profileFrameLimit=0,profileFrameCount=0;
+FILE* profileFile=nullptr;
+std::chrono::steady_clock::time_point previousDrawStart;
 std::vector<GravitySource> gravitySources;
 int selectedSource = 0;
 bool draggingSource = false;
@@ -130,7 +140,8 @@ void ResetStage() {
     if(stage==9){sharp.Reset();pressureView=false;interfaceHydrostatic=false;}
     liquidMouseHeld=false; reactionDemoDone=false; showGasArrows=true;
     stirDemoDone = false;
-    paused = false; accumulator = 0.0; recordElapsed = 0.0;
+    paused = false; frameScheduler.Reset(); recordElapsed = 0.0;
+    lastPhysicsCpuMs=lastTimerCpuMs=lastDrawCpuMs=0;lastPhysicsSteps=0;
     tracers.clear();
     for (int j = 0; j < 18; ++j) for (int i = 0; i < 18; ++i)
         tracers.push_back({{-1.4 + 2.8 * i / 17.0, -1.4 + 2.8 * j / 17.0}, {}});
@@ -288,7 +299,22 @@ void DrawInterfaceTriangle(const Vec2* points, const double* phi) {
             crossings[count++]=PlotPosition(points[e]+(points[next]-points[e])*theta);
         }
     }
-    if(count==2)Line(crossings[0].x,crossings[0].y,crossings[1].x,crossings[1].y,pressureView?Color{0.94,0.97,1.0}:Accent,2.2f);
+    if(count==2){
+        if(legacyGridRender)Line(crossings[0].x,crossings[0].y,crossings[1].x,crossings[1].y,pressureView?Color{0.94,0.97,1.0}:Accent,2.2f);
+        else {glVertex2d(crossings[0].x,crossings[0].y);glVertex2d(crossings[1].x,crossings[1].y);}
+    }
+}
+
+void EmitSharpArrow(Vec2 position,Vec2 vector,double spacing) {
+    const double magnitude=vector.Length();if(magnitude<1e-12)return;
+    const Vec2 base=PlotPosition(position),direction=Normalize(vector);
+    const double fraction=normalizedArrows?0.72:0.80*magnitude/(1+magnitude);
+    const double length=spacing*fraction;
+    const Vec2 delta{direction.x*length,-direction.y*length},tip=base+delta,side{-delta.y/length,delta.x/length};
+    const double head=std::min(5.0,length*0.38);const Vec2 back=tip-delta*(head/length);
+    glVertex2d(base.x,base.y);glVertex2d(tip.x,tip.y);
+    glVertex2d(tip.x,tip.y);glVertex2d(back.x+side.x*head*0.50,back.y+side.y*head*0.50);
+    glVertex2d(tip.x,tip.y);glVertex2d(back.x-side.x*head*0.50,back.y-side.y*head*0.50);
 }
 
 void DrawSharpInterface() {
@@ -296,6 +322,7 @@ void DrawSharpInterface() {
     double pressureScale=1.0;
     if(pressureView)for(int j=1;j<=n;++j)for(int i=1;i<=n;++i)
         pressureScale=std::max(pressureScale,std::abs(sharp.Pressure(i,j)));
+    if(!legacyGridRender)glBegin(GL_QUADS);
     for(int j=1;j<=n;++j)for(int i=1;i<=n;++i){
         Color color;
         if(pressureView){
@@ -310,19 +337,34 @@ void DrawSharpInterface() {
             const Color waterColor{0.07+0.08*speed,0.33+0.22*speed,0.73+0.20*speed};
             color={gas.r*(1-liquid)+waterColor.r*liquid,gas.g*(1-liquid)+waterColor.g*liquid,gas.b*(1-liquid)+waterColor.b*liquid};
         }
-        Rect(PlotX+(i-1)*cell,PlotY+(n-j)*cell,cell+0.05,cell+0.05,color);
+        const double x=PlotX+(i-1)*cell,y=PlotY+(n-j)*cell;
+        if(legacyGridRender)Rect(x,y,cell+0.05,cell+0.05,color);
+        else {SetColor(color);glVertex2d(x,y);glVertex2d(x+cell+0.05,y);glVertex2d(x+cell+0.05,y+cell+0.05);glVertex2d(x,y+cell+0.05);}
     }
+    if(!legacyGridRender)glEnd();
     glEnable(GL_SCISSOR_TEST);
     glScissor(viewportX+static_cast<int>(PlotX*viewportScale),
         windowHeight-viewportYTop-static_cast<int>((PlotY+PlotSize)*viewportScale),
         static_cast<int>(PlotSize*viewportScale),static_cast<int>(PlotSize*viewportScale));
     if(showGasArrows){
+        if(!legacyGridRender){SetColor({0.67,0.79,0.79});glLineWidth(1.3f);glBegin(GL_LINES);}
         for(int j=2;j<n;j+=3)for(int i=2;i<n;i+=3){
             const Vec2 world{-2+(i-0.5)*sharp.CellWidth(),-2+(j-0.5)*sharp.CellWidth()};
-            DrawArrow(world,{sharp.U(i,j),sharp.V(i,j)},{0.67,0.79,0.79},3*cell);
+            const Vec2 velocity{sharp.U(i,j),sharp.V(i,j)};
+            if(legacyGridRender)DrawArrow(world,velocity,{0.67,0.79,0.79},3*cell);
+            else EmitSharpArrow(world,velocity,3*cell);
+        }
+        if(!legacyGridRender){
+            glEnd();glLineWidth(1.0f);glBegin(GL_QUADS);
+            for(int j=2;j<n;j+=3)for(int i=2;i<n;i+=3)if(Vec2{sharp.U(i,j),sharp.V(i,j)}.Length()<1e-12){
+                const Vec2 p=PlotPosition({-2+(i-0.5)*sharp.CellWidth(),-2+(j-0.5)*sharp.CellWidth()});
+                glVertex2d(p.x-2,p.y-2);glVertex2d(p.x+2,p.y-2);glVertex2d(p.x+2,p.y+2);glVertex2d(p.x-2,p.y+2);
+            }
+            glEnd();
         }
     }
     // Linear zero crossings on two triangles per cell avoid ambiguous contour cases.
+    if(!legacyGridRender){SetColor(pressureView?Color{0.94,0.97,1.0}:Accent);glLineWidth(2.2f);glBegin(GL_LINES);}
     for(int j=1;j<n;++j)for(int i=1;i<n;++i){
         const Vec2 p00{-2+(i-0.5)*sharp.CellWidth(),-2+(j-0.5)*sharp.CellWidth()};
         const Vec2 p10=p00+Vec2{sharp.CellWidth(),0},p11=p00+Vec2{sharp.CellWidth(),sharp.CellWidth()},p01=p00+Vec2{0,sharp.CellWidth()};
@@ -331,6 +373,7 @@ void DrawSharpInterface() {
         const double fb[]={sharp.Phi(i,j),sharp.Phi(i+1,j+1),sharp.Phi(i,j+1)};
         DrawInterfaceTriangle(a,fa);DrawInterfaceTriangle(b,fb);
     }
+    if(!legacyGridRender){glEnd();glLineWidth(1.0f);}
     glDisable(GL_SCISSOR_TEST);
     Rect(PlotX+10,PlotY+10,pressureView?320:300,29,{0.06,0.085,0.12});
     Text(PlotX+20,PlotY+30,pressureView?"Pressure / mean-zero gauge / +/- "+Number(pressureScale,1):"Blue: water / amber: passive gas tracer",TextColor);
@@ -434,7 +477,7 @@ void RestartCoupling(CouplingMode mode) {
     coupled.Reset();coupled.SetGasDensity(gasDensity);coupled.SetDragRate(dragRate);
     coupled.SetJetEnabled(jet);coupled.SetCouplingMode(mode);
     SeedReactionTracer();
-    simulationTime=0;accumulator=0;reactionDemoDone=false;
+    simulationTime=0;frameScheduler.Reset();reactionDemoDone=false;
     captureNameOverride.clear();captureAfter=-1;quitAfterCapture=false;
 }
 
@@ -448,12 +491,15 @@ void RestartInterface(int mode, bool hydrostatic) {
         sharp.SetPhi([](Vec2 p){return p.y+0.45;});
         sharp.SetVelocity([](Vec2){return Vec2{};});sharp.SetJetEnabled(false);
     }
-    simulationTime=accumulator=0;
+    simulationTime=0;frameScheduler.Reset();
     mouseHeld=liquidMouseHeld=false;
     captureNameOverride.clear();captureAfter=-1;quitAfterCapture=false;
 }
 
 void DrawSharpPanel() {
+    // These diagnostics are evaluated once per draw, including paused input edits.
+    const double waterArea=sharp.WaterArea(),initialArea=sharp.InitialWaterArea();
+    const double areaError=(waterArea-initialArea)/std::max(initialArea,1e-12);
     Rect(PanelX,110,364,690,Surface);
     Text(PanelX+22,143,"SHARP INTERFACE / TWO-PHASE PRESSURE",Muted);
     const char* labels[]={"1  Subcell interface fraction","2  Midpoint resistance baseline","3  Pressure projection disabled"};
@@ -467,7 +513,7 @@ void DrawSharpPanel() {
     Text(PanelX+22,298,interfaceHydrostatic?"Flat surface / hydrostatic check":"Dam release / shared MAC velocity",Muted);
     Text(PanelX+22,323,std::string("Gas jet: ")+(sharp.JetEnabled()?"ON":"OFF")+"  /  "+(pressureView?"pressure view":"material view"),Muted);
     Line(PanelX+22,338,PanelX+342,338,{0.16,0.21,0.27});
-    Text(PanelX+22,365,"t = "+Number(sharp.Time(),3)+" s / "+(paused?"PAUSED":"120 Hz"));
+    Text(PanelX+22,365,"t = "+Number(sharp.Time(),3)+" s / "+(paused?"PAUSED":"dt = 1/120 s"));
     Text(PanelX+22,391,std::to_string(sharp.Size())+" x "+std::to_string(sharp.Size())+" MAC / rho: 1000 / "+Number(sharp.GasDensity(),1));
     Text(PanelX+22,418,"p continuous / sigma = 0 / shared normal u",Muted);
     Line(PanelX+22,434,PanelX+342,434,{0.16,0.21,0.27});
@@ -475,10 +521,10 @@ void DrawSharpPanel() {
     Text(PanelX+22,487,"Divergence after:   "+Scientific(sharp.divergenceAfterProjection),sharp.ProjectionEnabled()?Accent:Color{0.98,0.70,0.28});
     Text(PanelX+22,513,"PCG: "+std::to_string(sharp.pressureIterations)+" / converged: "+(sharp.ProjectionEnabled()?(sharp.pressureConverged?"YES":"NO"):"disabled"),Muted);
     Text(PanelX+22,539,"Pressure residual: "+Scientific(sharp.pressureResidual),Muted);
-    Text(PanelX+22,565,"Water area: "+Number(sharp.WaterArea(),5)+" / "+Number(sharp.InitialWaterArea(),5));
-    Text(PanelX+22,591,"Area drift: "+Scientific(sharp.RelativeAreaError()),Accent);
-    Text(PanelX+22,617,"Raw area error: "+Scientific(sharp.RawAreaError()),Muted);
-    Text(PanelX+22,643,"Area offset: "+Scientific(sharp.AreaCorrectionShift()),Muted);
+    Text(PanelX+22,565,"Water area: "+Number(waterArea,5)+" / "+Number(initialArea,5));
+    Text(PanelX+22,591,"Area drift: "+Scientific(areaError),Accent);
+    Text(PanelX+22,617,"Raw: "+Scientific(sharp.RawAreaError())+" / shift: "+Scientific(sharp.AreaCorrectionShift()),Muted);
+    Text(PanelX+22,643,"CPU physics: "+Number(lastPhysicsCpuMs,1)+" ms / draw: "+Number(lastDrawCpuMs,1)+" ms",Muted);
     Text(PanelX+22,669,"Max speed: "+Number(sharp.MaxSpeed(),3)+" / finite: "+(sharp.IsFinite()?"YES":"NO"),Accent);
     Line(PanelX+22,690,PanelX+342,690,{0.16,0.21,0.27});
     Text(PanelX+22,717,"Left: gas / right: water   P: pressure",Muted);
@@ -713,6 +759,10 @@ bool SaveFrame() {
 }
 
 void Display() {
+    const auto drawStart=std::chrono::steady_clock::now();
+    const double drawIntervalMs=previousDrawStart.time_since_epoch().count()==0?0:
+        std::chrono::duration<double,std::milli>(drawStart-previousDrawStart).count();
+    previousDrawStart=drawStart;
     glClearColor(static_cast<GLfloat>(Background.r), static_cast<GLfloat>(Background.g),
                  static_cast<GLfloat>(Background.b), 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -741,6 +791,16 @@ void Display() {
         glutPostRedisplay();
     }
     glutSwapBuffers();
+    lastDrawCpuMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-drawStart).count();
+    // Includes submission and buffer swap; it is CPU elapsed time, not GPU time.
+    if(profileFile)std::fprintf(profileFile,"%d,%d,%.9f,%.6f,%.6f,%.6f,%d,%.9f,%.6f\n",
+        profileFrameCount,stage,simulationTime,lastPhysicsCpuMs,lastTimerCpuMs,lastDrawCpuMs,lastPhysicsSteps,frameScheduler.DiscardedSeconds(),drawIntervalMs);
+    ++profileFrameCount;
+    if(profileFrameLimit>0 && profileFrameCount>=profileFrameLimit){
+        if(profileFile){std::fclose(profileFile);profileFile=nullptr;}
+        std::printf("UI profile completed: %d frames; simulated %.6f s; discarded wall time %.6f s.\n",profileFrameCount,simulationTime,frameScheduler.DiscardedSeconds());
+        std::exit(0);
+    }
 }
 
 void Reshape(int width, int height) {
@@ -915,14 +975,18 @@ void Motion(int x, int y) {
 }
 
 void Timer(int) {
+    const auto timerStart=std::chrono::steady_clock::now();
     const int now = glutGet(GLUT_ELAPSED_TIME);
     const double elapsed = std::max(0, now - lastTimerTime) / 1000.0;
     recordElapsed += elapsed;
     lastTimerTime = now;
+    lastPhysicsSteps=0;lastPhysicsCpuMs=0;
     if (stage >= 3 && !paused) {
-        accumulator += std::min(0.1,elapsed);
+        const bool interactive=captureAfter<0 && !quitAfterCapture && !legacyFrameLoop;
+        frameScheduler.AddElapsed(elapsed,interactive);
         const double dt = 1.0/120.0;
-        while (accumulator >= dt) {
+        while (frameScheduler.ShouldStep(lastPhysicsSteps,lastPhysicsCpuMs,interactive)) {
+            const auto physicsStart=std::chrono::steady_clock::now();
             if (stage == 3) for (auto& tracer : tracers) {
                 tracer.position = AdvectRK2(tracer.position, dt, fieldType, strength);
                 bool wrapped = false;
@@ -962,7 +1026,8 @@ void Timer(int) {
                     fluid.Step(dt,viscosity,diffusion,projectionEnabled,true,stage == 6 && buoyancyEnabled);
                 }
             }
-            simulationTime += dt; accumulator -= dt;
+            simulationTime += dt; frameScheduler.ConsumeStep();++lastPhysicsSteps;
+            lastPhysicsCpuMs+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-physicsStart).count();
             if(captureAfter>=0.0 && simulationTime+1e-9>=captureAfter)break;
         }
         glutPostRedisplay();
@@ -970,7 +1035,11 @@ void Timer(int) {
     if (captureAfter >= 0.0 && (stage >= 3 ? simulationTime+1e-9 : recordElapsed) >= captureAfter) {
         captureAfter = -1.0; captureRequested = true; glutPostRedisplay();
     }
-    glutTimerFunc(16, Timer, 0);
+    lastTimerCpuMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-timerStart).count();
+    // Rendering runs after this callback. Reuse the previous draw measurement
+    // when budgeting the next timer instead of adding 16 ms after all CPU work.
+    const int delay=legacyFrameLoop?16:std::max(1,static_cast<int>(std::ceil(16.0-lastTimerCpuMs-lastDrawCpuMs)));
+    glutTimerFunc(delay, Timer, 0);
 }
 } // namespace
 
@@ -981,10 +1050,12 @@ int Run(int argc, char** argv) {
             failed|=RunDynamicsTests(); failed|=RunFluidGridTests(); failed|=RunWaterParticleTests();
             failed|=RunTwoMaterialTests();
             failed|=RunSharpInterfaceTests();
+            failed|=RunFrameSchedulerTests();
             return failed;
         }
         if(std::strcmp(argv[i],"--test-stage8")==0)return RunTwoMaterialTests();
         if(std::strcmp(argv[i],"--test-stage9")==0)return RunSharpInterfaceTests();
+        if(std::strcmp(argv[i],"--test-frame-scheduler")==0)return RunFrameSchedulerTests();
         if (std::strcmp(argv[i], "--legacy") == 0) { LegacyMain(argc, argv); return 0; }
     }
     int wideCount = 0;
@@ -1001,6 +1072,8 @@ int Run(int argc, char** argv) {
             else if(std::wstring(wideArgs[i])==L"--gas-density")requestedGasDensity=_wtof(wideArgs[++i]);
             else if(std::wstring(wideArgs[i])==L"--drag-rate")requestedDragRate=_wtof(wideArgs[++i]);
             else if(std::wstring(wideArgs[i])==L"--interface-mode")requestedInterfaceMode=std::max(1,std::min(3,_wtoi(wideArgs[++i])));
+            else if(std::wstring(wideArgs[i])==L"--profile-log")profileLogPath=wideArgs[++i];
+            else if(std::wstring(wideArgs[i])==L"--profile-frames")profileFrameLimit=std::max(30,std::min(2000,_wtoi(wideArgs[++i])));
         }
         for (int i = 1; i < wideCount; ++i) {
             if (std::wstring(wideArgs[i]) == L"--quit-after-capture") quitAfterCapture = true;
@@ -1010,8 +1083,15 @@ int Run(int argc, char** argv) {
             if(std::wstring(wideArgs[i])==L"--reaction-demo")reactionDemo=true;
             if(std::wstring(wideArgs[i])==L"--pressure-view")requestedPressureView=true;
             if(std::wstring(wideArgs[i])==L"--hydrostatic")requestedHydrostatic=true;
+            if(std::wstring(wideArgs[i])==L"--legacy-frame-loop")legacyFrameLoop=true;
+            if(std::wstring(wideArgs[i])==L"--legacy-grid-render")legacyGridRender=true;
         }
         LocalFree(wideArgs);
+    }
+    if(!profileLogPath.empty()){
+        if(_wfopen_s(&profileFile,profileLogPath.c_str(),L"wb")!=0 || !profileFile){std::fprintf(stderr,"Cannot open UI profile log.\n");return 2;}
+        std::fprintf(profileFile,"frame,stage,simulation_seconds,physics_cpu_ms,timer_cpu_ms,draw_cpu_ms,physics_steps,discarded_wall_seconds,frame_interval_ms\n");
+        if(profileFrameLimit==0)profileFrameLimit=180;
     }
     // Keep custom Unicode arguments away from GLUT's legacy argument parser.
     int glutCount = 1;
