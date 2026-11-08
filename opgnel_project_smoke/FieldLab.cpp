@@ -6,12 +6,15 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
 #include "GL/glut.h"
 #include "FieldMath.h"
+#include "DynamicsMath.h"
 #include "../tests/FieldMathTests.h"
+#include "../tests/DynamicsTests.h"
 
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "ole32.lib")
@@ -30,6 +33,17 @@ constexpr double PanelX = 770.0;
 constexpr double Domain = 2.0;
 
 FieldType fieldType = FieldType::Rotation;
+int stage = 1;
+std::vector<GravitySource> gravitySources;
+int selectedSource = 0;
+bool draggingSource = false;
+double simulationTime = 0.0;
+double captureAfter = -1.0;
+bool quitAfterCapture = false;
+std::wstring captureNameOverride;
+int lastTimerTime = 0;
+double recordElapsed = 0.0;
+double requestedStrength = -1.0;
 double strength = 1.0;
 int gridSize = 21;
 bool normalizedArrows = false;
@@ -49,6 +63,27 @@ const Color Surface{0.071, 0.098, 0.137};
 const Color Muted{0.48, 0.58, 0.69};
 const Color TextColor{0.87, 0.92, 0.97};
 const Color Accent{0.32, 0.87, 0.77};
+
+void ResetStage() {
+    fieldType = FieldType::Rotation; strength = 1.0; gridSize = 21;
+    normalizedArrows = false; selected = {1.0, 0.5}; simulationTime = 0.0;
+    gravitySources = {{{-0.65, 0.2}, 1.0}, {{0.8, -0.1}, 1.5}};
+    selectedSource = 0; draggingSource = false;
+    glutSetWindowTitle(stage == 1 ? "VectorField - 01 Vector fields" : "VectorField - 02 Gravity field");
+}
+
+Vec2 CurrentField(Vec2 position) {
+    return stage == 2 ? GravityField(position, gravitySources, 0.4 * strength, 0.12)
+                      : Evaluate(fieldType, position, strength);
+}
+
+Differential CurrentDerivatives(Vec2 position) {
+    if (stage != 2) return Derivatives(fieldType, position, strength);
+    const double h = 1e-4;
+    const Vec2 dx = (CurrentField(position + Vec2{h, 0}) - CurrentField(position - Vec2{h, 0})) / (2 * h);
+    const Vec2 dy = (CurrentField(position + Vec2{0, h}) - CurrentField(position - Vec2{0, h})) / (2 * h);
+    return {dx.x + dy.y, dx.y - dy.x};
+}
 
 void SetColor(Color c) { glColor3d(c.r, c.g, c.b); }
 
@@ -162,7 +197,7 @@ void DrawPlot() {
     for (int j = 0; j < gridSize; ++j) {
         for (int i = 0; i < gridSize; ++i) {
             Vec2 p{-Domain + step * i, -Domain + step * j};
-            Vec2 vector = Evaluate(fieldType, p, strength);
+            Vec2 vector = CurrentField(p);
             DrawArrow(p, vector, MagnitudeColor(vector.Length()), pixelSpacing);
         }
     }
@@ -170,31 +205,58 @@ void DrawPlot() {
     const Vec2 pixel = PlotPosition(selected);
     Line(pixel.x - 9, pixel.y, pixel.x + 9, pixel.y, TextColor, 1.5f);
     Line(pixel.x, pixel.y - 9, pixel.x, pixel.y + 9, TextColor, 1.5f);
-    DrawArrow(selected, Evaluate(fieldType, selected, strength), TextColor, 72.0, true);
+    DrawArrow(selected, CurrentField(selected), TextColor, 72.0, true);
+    if (stage == 2) {
+        for (size_t i = 0; i < gravitySources.size(); ++i) {
+            const Vec2 center = PlotPosition(gravitySources[i].position);
+            const double radius = 11.0 + gravitySources[i].mass * 3.0;
+            SetColor(i == static_cast<size_t>(selectedSource) ? Accent : Color{0.98, 0.70, 0.28});
+            glBegin(GL_TRIANGLE_FAN);
+            glVertex2d(center.x, center.y);
+            for (int a = 0; a <= 32; ++a) {
+                const double angle = a * 6.283185307179586 / 32.0;
+                glVertex2d(center.x + radius * std::cos(angle), center.y + radius * std::sin(angle));
+            }
+            glEnd();
+            Text(center.x + radius + 4, center.y - 6, "m=" + Number(gravitySources[i].mass, 1));
+        }
+    }
     glDisable(GL_SCISSOR_TEST);
 }
 
 void DrawPanel() {
     Rect(PanelX, 110, 364, 690, Surface);
-    Text(PanelX + 22, 143, "FIELD PRESETS", Muted);
+    Text(PanelX + 22, 143, stage == 2 ? "GRAVITY SOURCES" : "FIELD PRESETS", Muted);
     const FieldType types[] = {FieldType::Uniform, FieldType::Rotation,
                                FieldType::Source, FieldType::Saddle};
     for (int i = 0; i < 4; ++i) {
         const double y = 158 + i * 47.0;
+        if (stage == 2) {
+            if (i < static_cast<int>(gravitySources.size())) {
+                const auto& source = gravitySources[i];
+                Rect(PanelX + 16, y, 332, 38, i == selectedSource ? Color{0.11,0.24,0.25} : Color{0.086,0.12,0.16});
+                Text(PanelX + 29, y + 24, std::to_string(i + 1) + "   mass " + Number(source.mass,1)
+                     + "   (" + Number(source.position.x,1) + "," + Number(source.position.y,1) + ")");
+            }
+            continue;
+        }
         const bool active = types[i] == fieldType;
         Rect(PanelX + 16, y, 332, 38, active ? Color{0.11, 0.24, 0.25} : Color{0.086, 0.12, 0.16});
         if (active) Rect(PanelX + 16, y, 3, 38, Accent);
         Text(PanelX + 29, y + 24, std::to_string(i + 1) + "   " + FieldName(types[i]),
              active ? Accent : TextColor, GLUT_BITMAP_HELVETICA_18);
     }
-    Text(PanelX + 22, 384, Formula(fieldType), Accent, GLUT_BITMAP_HELVETICA_18);
+    if (stage == 2) {
+        Text(PanelX + 22, 361, "a = sum G m r / (r^2 + eps^2)^1.5", Accent);
+        Text(PanelX + 22, 384, "G = " + Number(0.4 * strength,2) + "    eps = 0.12    sources: " + std::to_string(gravitySources.size()), Accent);
+    } else Text(PanelX + 22, 384, Formula(fieldType), Accent, GLUT_BITMAP_HELVETICA_18);
     Text(PanelX + 22, 414, "Strength k                 " + Number(strength, 2));
     Text(PanelX + 22, 440, "Grid samples              " + std::to_string(gridSize) + " x " + std::to_string(gridSize));
     Text(PanelX + 22, 466, normalizedArrows ? "Arrow length               normalized" : "Arrow length               compressed magnitude");
     Line(PanelX + 22, 488, PanelX + 342, 488, {0.16, 0.21, 0.27});
     Text(PanelX + 22, 516, "PROBE / CLICK IN THE FIELD", Muted);
-    const Vec2 value = Evaluate(fieldType, selected, strength);
-    const Differential differential = Derivatives(fieldType, selected, strength);
+    const Vec2 value = CurrentField(selected);
+    const Differential differential = CurrentDerivatives(selected);
     Text(PanelX + 22, 545, "p = (" + Number(selected.x) + ", " + Number(selected.y) + ")");
     Text(PanelX + 22, 571, "F = (" + Number(value.x) + ", " + Number(value.y) + ")", Accent);
     Text(PanelX + 22, 597, "|F| = " + Number(value.Length()));
@@ -202,12 +264,14 @@ void DrawPanel() {
     Text(PanelX + 22, 659, "Curl (z)             " + Number(differential.curl));
     Text(PanelX + 22, 687, "Central differences, h = 0.0001", Muted);
     Line(PanelX + 22, 708, PanelX + 342, 708, {0.16, 0.21, 0.27});
-    Text(PanelX + 22, 738, "1-4  preset     +/-  strength     G  grid", Muted);
-    Text(PanelX + 22, 762, "N  normalize     R  reset     F12  capture", Muted);
-    Text(PanelX + 22, 786, "Click the preset buttons or the plot", Muted);
+    Text(PanelX + 22, 738, stage == 2 ? "Click: add / select   Drag: move   M: mass" : "1-4  preset     +/-  strength     G  grid", Muted);
+    Text(PanelX + 22, 762, stage == 2 ? "Right click: remove    R: reset    +/-: G" : "N  normalize     R  reset     F12  capture", Muted);
+    Text(PanelX + 22, 786, "F1-F2: stage    Tab: next    F12: capture", Muted);
 }
 
 std::wstring CaptureName() {
+    if (!captureNameOverride.empty()) return captureNameOverride;
+    if (stage == 2) return L"01_\uc911\ub825\ud569\uc131.png";
     switch (fieldType) {
     case FieldType::Rotation: return L"01_\ud68c\uc804\uc7a5.png";
     case FieldType::Source: return L"02_\ubc1c\uc0b0\uc7a5.png";
@@ -274,9 +338,9 @@ void Display() {
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     Text(54, 42, "VECTORFIELD  /  DEVELOPMENT LAB", Accent);
-    Text(54, 77, "01    Vector fields", TextColor, GLUT_BITMAP_HELVETICA_18);
-    Text(54, 102, "Position -> vector -> magnitude -> divergence & curl", Muted);
-    Text(PanelX + 165, 45, "STAGE 01 / 06", Muted);
+    Text(54, 77, stage == 2 ? "02    Gravity field" : "01    Vector fields", TextColor, GLUT_BITMAP_HELVETICA_18);
+    Text(54, 102, stage == 2 ? "Softened inverse-square acceleration / source superposition" : "Position -> vector -> magnitude -> divergence & curl", Muted);
+    Text(PanelX + 165, 45, "STAGE 0" + std::to_string(stage) + " / 07", Muted);
     DrawPlot();
     DrawPanel();
     Text(54, 842, "Color: low magnitude (cyan) -> high (amber).  Display length does not change F.", Muted);
@@ -285,8 +349,9 @@ void Display() {
         captureRequested = false;
         const bool saved = SaveFrame();
         captureStatus = saved ? "PNG saved. F12 replaces this preset capture." : "Capture failed. Check the output folder.";
-        std::printf("Capture %s (preset %s)\n", saved ? "saved" : "FAILED", FieldName(fieldType));
+        std::printf("Capture %s (stage %d, t=%.3f, k=%.2f)\n", saved ? "saved" : "FAILED", stage, simulationTime, strength);
         std::fflush(stdout);
+        if (quitAfterCapture) { glutSwapBuffers(); std::exit(saved ? 0 : 2); }
         glutPostRedisplay();
     }
     glutSwapBuffers();
@@ -318,37 +383,83 @@ void Keyboard(unsigned char key, int, int) {
     case '-': case '_': strength = std::max(0.25, strength - 0.25); break;
     case 'g': case 'G': gridSize = gridSize == 21 ? 31 : (gridSize == 31 ? 41 : 21); break;
     case 'n': case 'N': normalizedArrows = !normalizedArrows; break;
-    case 'r': case 'R':
-        fieldType = FieldType::Rotation; strength = 1.0; gridSize = 21;
-        normalizedArrows = false; selected = {1.0, 0.5}; break;
+    case 'm': case 'M':
+        if (stage == 2 && selectedSource >= 0 && selectedSource < static_cast<int>(gravitySources.size())) {
+            double& mass = gravitySources[selectedSource].mass;
+            mass = mass >= 4.0 ? 0.5 : mass + 0.5;
+        }
+        break;
+    case '\t': stage = stage == 2 ? 1 : stage + 1; ResetStage(); break;
+    case 'r': case 'R': ResetStage(); break;
     }
     glutPostRedisplay();
 }
 
 void Special(int key, int, int) {
+    if (key == GLUT_KEY_F1 || key == GLUT_KEY_F2) { stage = key - GLUT_KEY_F1 + 1; ResetStage(); glutPostRedisplay(); }
     if (key == GLUT_KEY_F12) { captureRequested = true; glutPostRedisplay(); }
 }
 
 void Mouse(int button, int state, int x, int y) {
-    if (button != GLUT_LEFT_BUTTON || state != GLUT_DOWN) return;
+    if (state == GLUT_UP) { draggingSource = false; return; }
     const double px = (x - viewportX) / viewportScale;
     const double py = (y - viewportYTop) / viewportScale;
     if (px >= PlotX && px <= PlotX + PlotSize && py >= PlotY && py <= PlotY + PlotSize) {
         selected = {(px - PlotX) / PlotSize * 4.0 - 2.0,
                      2.0 - (py - PlotY) / PlotSize * 4.0};
+        if (stage == 2) {
+            int nearest = -1;
+            double distance = 0.24;
+            for (int i = 0; i < static_cast<int>(gravitySources.size()); ++i) {
+                const double d = (selected - gravitySources[i].position).Length();
+                if (d < distance) { distance = d; nearest = i; }
+            }
+            if (button == GLUT_RIGHT_BUTTON && nearest >= 0) {
+                gravitySources.erase(gravitySources.begin() + nearest);
+                selectedSource = gravitySources.empty() ? -1 : 0;
+            } else if (button == GLUT_LEFT_BUTTON) {
+                if (nearest < 0 && gravitySources.size() < 16) {
+                    gravitySources.push_back({selected, 1.0}); nearest = static_cast<int>(gravitySources.size()) - 1;
+                }
+                selectedSource = nearest; draggingSource = nearest >= 0;
+            }
+        }
     } else if (px >= PanelX + 16 && px <= PanelX + 348) {
         for (int i = 0; i < 4; ++i) {
-            if (py >= 158 + i * 47.0 && py <= 196 + i * 47.0)
-                fieldType = static_cast<FieldType>(i);
+            if (py >= 158 + i * 47.0 && py <= 196 + i * 47.0) {
+                if (stage == 2 && i < static_cast<int>(gravitySources.size())) selectedSource = i;
+                else if (stage != 2) fieldType = static_cast<FieldType>(i);
+            }
         }
     }
     glutPostRedisplay();
+}
+
+void Motion(int x, int y) {
+    if (stage != 2 || !draggingSource || selectedSource < 0) return;
+    const double px = (x - viewportX) / viewportScale;
+    const double py = (y - viewportYTop) / viewportScale;
+    Vec2 p{std::max(-2.0,std::min(2.0,(px-PlotX)/PlotSize*4.0-2.0)),
+           std::max(-2.0,std::min(2.0,2.0-(py-PlotY)/PlotSize*4.0))};
+    gravitySources[selectedSource].position = p;
+    selected = p;
+    glutPostRedisplay();
+}
+
+void Timer(int) {
+    const int now = glutGet(GLUT_ELAPSED_TIME);
+    recordElapsed += std::max(0, now - lastTimerTime) / 1000.0;
+    lastTimerTime = now;
+    if (captureAfter >= 0.0 && recordElapsed >= captureAfter) {
+        captureAfter = -1.0; captureRequested = true; glutPostRedisplay();
+    }
+    glutTimerFunc(16, Timer, 0);
 }
 } // namespace
 
 int Run(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--self-test") == 0) return RunFieldMathTests();
+        if (std::strcmp(argv[i], "--self-test") == 0) return RunFieldMathTests() | RunDynamicsTests();
         if (std::strcmp(argv[i], "--legacy") == 0) { LegacyMain(argc, argv); return 0; }
     }
     int wideCount = 0;
@@ -356,7 +467,12 @@ int Run(int argc, char** argv) {
     if (wideArgs) {
         for (int i = 1; i + 1 < wideCount; ++i) {
             if (std::wstring(wideArgs[i]) == L"--capture-dir") captureDirectory = wideArgs[++i];
+            else if (std::wstring(wideArgs[i]) == L"--stage") stage = std::max(1,std::min(2,_wtoi(wideArgs[++i])));
+            else if (std::wstring(wideArgs[i]) == L"--capture-after") captureAfter = _wtof(wideArgs[++i]);
+            else if (std::wstring(wideArgs[i]) == L"--capture-name") captureNameOverride = wideArgs[++i];
+            else if (std::wstring(wideArgs[i]) == L"--strength") requestedStrength = _wtof(wideArgs[++i]);
         }
+        for (int i = 1; i < wideCount; ++i) if (std::wstring(wideArgs[i]) == L"--quit-after-capture") quitAfterCapture = true;
         LocalFree(wideArgs);
     }
     // Keep custom Unicode arguments away from GLUT's legacy argument parser.
@@ -366,6 +482,8 @@ int Run(int argc, char** argv) {
     glutInitWindowSize(windowWidth, windowHeight);
     glutInitWindowPosition(30, 35);
     glutCreateWindow("VectorField - 01 Vector fields");
+    ResetStage();
+    if (requestedStrength > 0.0) strength = std::max(0.25,std::min(3.0,requestedStrength));
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -374,6 +492,9 @@ int Run(int argc, char** argv) {
     glutKeyboardFunc(Keyboard);
     glutSpecialFunc(Special);
     glutMouseFunc(Mouse);
+    glutMotionFunc(Motion);
+    lastTimerTime = glutGet(GLUT_ELAPSED_TIME);
+    glutTimerFunc(16, Timer, 0);
     // Event-driven drawing avoids an idle loop consuming a CPU core.
     glutMainLoop();
     return 0;
