@@ -24,7 +24,7 @@ foreach ($header in @('FieldMath.h','DynamicsMath.h','FluidGrid.h','WaterParticl
     if (Test-Path -LiteralPath "$repoRoot\opgnel_project_smoke\$header") { Copy-Item -LiteralPath "$repoRoot\opgnel_project_smoke\$header" -Destination "$stageRoot\소스\$header" -Force }
 }
 Compress-Archive -Path "$checkpointRoot\*" -DestinationPath "$stageRoot\소스\전체소스.zip" -Force
-$launcher = "@echo off`r`nchcp 65001 >nul`r`npushd `"%~dp0`"`r`n`"%~dp0실행파일\VectorField.exe`" --stage $Number --capture-dir `"%~dp0캡처`" %*`r`nset `"appExitCode=%errorlevel%`"`r`npopd`r`nif not `"%appExitCode%`"==`"0`" pause`r`nexit /b %appExitCode%`r`n"
+$launcher = (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Stage-Launcher.cmd.template') -Raw -Encoding UTF8).Replace('@STAGE@', [string]$Number)
 [IO.File]::WriteAllText("$stageRoot\실행.cmd",$launcher,(New-Object Text.UTF8Encoding($false)))
 $readme = "이 단계 완성 시점의 소스입니다. 전체소스.zip을 별도 폴더에 풀고 build.cmd를 실행하면 다시 빌드할 수 있습니다. FieldLab.cpp와 계산 헤더는 압축을 풀지 않고도 읽을 수 있게 함께 보관했습니다.`r`n"
 [IO.File]::WriteAllText("$stageRoot\소스\읽어주세요.txt",$readme,(New-Object Text.UTF8Encoding($false)))

@@ -2,6 +2,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <wincodec.h>
 #include <algorithm>
 #include <cmath>
@@ -15,9 +16,11 @@
 #include "FieldMath.h"
 #include "DynamicsMath.h"
 #include "FluidGrid.h"
+#include "WaterParticles.h"
 #include "../tests/FieldMathTests.h"
 #include "../tests/DynamicsTests.h"
 #include "../tests/FluidGridTests.h"
+#include "../tests/WaterParticleTests.h"
 
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "ole32.lib")
@@ -37,7 +40,11 @@ constexpr double Domain = 2.0;
 
 FieldType fieldType = FieldType::Rotation;
 int stage = 1;
-constexpr int AvailableStages = 6;
+constexpr int AvailableStages = 7;
+WaterParticles water;
+double requestedViscosity = -1.0;
+bool stirDemo = false;
+bool stirDemoDone = false;
 FluidGrid fluid(64);
 bool projectionEnabled = true;
 bool buoyancyEnabled = true;
@@ -92,11 +99,13 @@ void ResetStage() {
     if (stage == 4) strength = 0.65;
     if (stage == 5) fluid.AddVelocity(0.52,0.5,1.2,0.5,0.16);
     if (stage == 6) fluid.Clear();
+    water.SetViscosity(0.025); water.SetRestDensity(1000.0); water.Reset();
+    stirDemoDone = false;
     paused = false; accumulator = 0.0; recordElapsed = 0.0;
     tracers.clear();
     for (int j = 0; j < 18; ++j) for (int i = 0; i < 18; ++i)
         tracers.push_back({{-1.4 + 2.8 * i / 17.0, -1.4 + 2.8 * j / 17.0}, {}});
-    const char* titles[] = {"", "VectorField - 01 Vector fields", "VectorField - 02 Gravity field", "VectorField - 03 Particle advection", "VectorField - 04 Advection and diffusion", "VectorField - 05 Incompressible fluid", "VectorField - 06 Interactive smoke"};
+    const char* titles[] = {"", "VectorField - 01 Vector fields", "VectorField - 02 Gravity field", "VectorField - 03 Particle advection", "VectorField - 04 Advection and diffusion", "VectorField - 05 Incompressible fluid", "VectorField - 06 Interactive smoke", "VectorField - 07 Particle liquid"};
     glutSetWindowTitle(titles[stage]);
 }
 
@@ -204,6 +213,39 @@ void DrawArrow(Vec2 position, Vec2 vector, Color color, double spacing,
          back.y - side.y * head * 0.50, color, highlight ? 2.0f : 1.3f);
 }
 
+void DrawWater() {
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(viewportX + static_cast<int>(PlotX * viewportScale),
+        windowHeight - viewportYTop - static_cast<int>((PlotY+PlotSize)*viewportScale),
+        static_cast<int>(PlotSize*viewportScale),static_cast<int>(PlotSize*viewportScale));
+    const double radius = water.ParticleRadius() * PlotSize / 4.0;
+    double surface[50]; std::fill(surface,surface+50,-3.0);
+    for (const auto& particle : water.Particles()) {
+        const Vec2 p = PlotPosition(particle.position);
+        const double speed = std::min(1.0,particle.velocity.Length()/8.0);
+        SetColor({0.10+0.15*speed,0.44+0.32*speed,0.90+0.09*speed});
+        glBegin(GL_TRIANGLE_FAN); glVertex2d(p.x,p.y);
+        for (int a=0; a<=14; ++a) {
+            const double theta=a*6.283185307179586/14;
+            glVertex2d(p.x+radius*std::cos(theta),p.y+radius*std::sin(theta));
+        }
+        glEnd();
+        const int bin=std::max(0,std::min(49,static_cast<int>((particle.position.x+2)/4.0*50)));
+        surface[bin]=std::max(surface[bin],particle.position.y+water.ParticleRadius());
+    }
+    // The top envelope is a visualization of particles, not another water solver.
+    for (int i=0; i<49; ++i) if (surface[i]>-2.5 && surface[i+1]>-2.5 && std::abs(surface[i+1]-surface[i])<0.4) {
+        const Vec2 a=PlotPosition({-2+(i+0.5)*4/50.0,surface[i]});
+        const Vec2 b=PlotPosition({-2+(i+1.5)*4/50.0,surface[i+1]});
+        Line(a.x,a.y,b.x,b.y,Accent,1.5f);
+    }
+    const Vec2 probe=PlotPosition(selected);
+    Line(probe.x-7,probe.y,probe.x+7,probe.y,Muted);
+    Line(probe.x,probe.y-7,probe.x,probe.y+7,Muted);
+    glDisable(GL_SCISSOR_TEST);
+    Line(PlotX,PlotY+PlotSize,PlotX+PlotSize,PlotY+PlotSize,{0.34,0.48,0.60},3.0f);
+}
+
 void DrawPlot() {
     Rect(PlotX, PlotY, PlotSize, PlotSize, {0.055, 0.078, 0.109});
     for (int i = 0; i <= 8; ++i) {
@@ -218,6 +260,7 @@ void DrawPlot() {
     }
     Text(PlotX + PlotSize - 12, PlotY + PlotSize + 43, "x", Muted);
     Text(PlotX - 25, PlotY - 14, "y", Muted);
+    if (stage == 7) { DrawWater(); return; }
 
     if (stage >= 4) {
         const double cell = PlotSize / fluid.Size();
@@ -291,7 +334,7 @@ void DrawFluidPanel() {
     Line(PanelX+22,339,PanelX+342,339,{0.16,0.21,0.27});
     Text(PanelX+22,369,"t = " + Number(simulationTime,3) + " s / " + (paused ? "PAUSED" : "120 Hz steps"));
     Text(PanelX+22,397,"Grid: 64 x 64     domain length: 4");
-    Text(PanelX+22,425,"Viscosity: " + Scientific(viscosity));
+    Text(PanelX+22,425,stage == 4 ? "Velocity viscosity: not applied" : "Viscosity: " + Scientific(viscosity));
     Text(PanelX+22,453,"Dye diffusion: " + Scientific(diffusion));
     Line(PanelX+22,475,PanelX+342,475,{0.16,0.21,0.27});
     const Vec2 normalized = (selected + Vec2{2,2}) / 4.0;
@@ -311,7 +354,38 @@ void DrawFluidPanel() {
     Text(PanelX+22,786,stage == 6 ? "B: buoyancy   E: emitters   Tab: next" : "Tab: next stage   +/-: source strength",Muted);
 }
 
+void DrawWaterPanel() {
+    Rect(PanelX,110,364,690,Surface);
+    Text(PanelX+22,143,"LAGRANGIAN / POSITION BASED FLUIDS",Muted);
+    Text(PanelX+22,184,water.Viscosity()>0.1 ? "Viscous liquid" : "Water particles",Accent,GLUT_BITMAP_HELVETICA_18);
+    Text(PanelX+22,218,std::to_string(water.Count()) + " equal-mass particles");
+    Text(PanelX+22,251,"Free surface: particle representation",Muted);
+    Text(PanelX+22,284,"Density constraint iterations: " + std::to_string(water.ConstraintIterations()));
+    Text(PanelX+22,317,"Gravity: (0, " + Number(water.Gravity().y,2) + ")",Muted);
+    Line(PanelX+22,339,PanelX+342,339,{0.16,0.21,0.27});
+    Text(PanelX+22,369,"t = " + Number(water.SimulatedTime(),3) + " s / " + (paused ? "PAUSED" : "120 Hz steps"));
+    Text(PanelX+22,397,"XSPH viscosity: " + Number(water.Viscosity(),3));
+    Text(PanelX+22,425,"Target 2D density: " + Number(water.RestDensity(),0));
+    Text(PanelX+22,453,"Kernel radius h: " + Number(water.SmoothingRadius(),2));
+    Line(PanelX+22,475,PanelX+342,475,{0.16,0.21,0.27});
+    Text(PanelX+22,504,"MEAN POSITIVE DENSITY EXCESS",Muted);
+    Text(PanelX+22,533,"Predicted: " + Scientific(water.LastPredictedDensityError()));
+    Text(PanelX+22,561,"Corrected: " + Scientific(water.LastSolvedDensityError()),Accent);
+    double meanSpeed=0;
+    for (const auto& p:water.Particles()) meanSpeed+=p.velocity.Length();
+    if (water.Count()) meanSpeed/=water.Count();
+    Text(PanelX+22,601,"Mean speed: " + Number(meanSpeed,3));
+    Text(PanelX+22,629,water.IsFinite() ? "Finite state: YES" : "Finite state: NO",Accent);
+    Text(PanelX+22,657,"Probe: (" + Number(selected.x,2) + ", " + Number(selected.y,2) + ")",Muted);
+    Text(PanelX+22,685,"Gas / liquid coupling: future stage",Muted);
+    Line(PanelX+22,706,PanelX+342,706,{0.16,0.21,0.27});
+    Text(PanelX+22,737,"1: water   2: viscous   3: inviscid",Muted);
+    Text(PanelX+22,762,"Drag: stir   A: add   [ / ]: viscosity",Muted);
+    Text(PanelX+22,786,"D: density   Space: pause   R: reset",Muted);
+}
+
 void DrawPanel() {
+    if (stage == 7) { DrawWaterPanel(); return; }
     if (stage >= 4) { DrawFluidPanel(); return; }
     Rect(PanelX, 110, 364, 690, Surface);
     Text(PanelX + 22, 143, stage == 2 ? "GRAVITY SOURCES" : "FIELD PRESETS", Muted);
@@ -364,6 +438,7 @@ std::wstring CaptureName() {
     if (stage == 4) return L"01_\uc774\ub958.png";
     if (stage == 5) return L"01_\ud22c\uc601\uc801\uc6a9.png";
     if (stage == 6) return L"01_\uc5f0\uae30\ubd84\ucd9c.png";
+    if (stage == 7) return L"01_\ubb3c\ubd95\uad34.png";
     switch (fieldType) {
     case FieldType::Rotation: return L"01_\ud68c\uc804\uc7a5.png";
     case FieldType::Source: return L"02_\ubc1c\uc0b0\uc7a5.png";
@@ -376,9 +451,13 @@ std::wstring CaptureName() {
 // Save pixels from the real OpenGL back buffer, including the panel and probe.
 // WIC writes PNG without adding another third-party graphics dependency.
 bool SaveFrame() {
-    if (!CreateDirectoryW(captureDirectory.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS)
-        return false;
-    const std::wstring path = captureDirectory + L"\\" + CaptureName();
+    std::vector<wchar_t> absolutePath(32768);
+    const DWORD pathLength=GetFullPathNameW(captureDirectory.c_str(),static_cast<DWORD>(absolutePath.size()),absolutePath.data(),nullptr);
+    if(pathLength==0||pathLength>=absolutePath.size())return false;
+    const std::wstring fullDirectory(absolutePath.data());
+    const int directoryResult=SHCreateDirectoryExW(nullptr,fullDirectory.c_str(),nullptr);
+    if (directoryResult != ERROR_SUCCESS && directoryResult != ERROR_ALREADY_EXISTS && directoryResult != ERROR_FILE_EXISTS) return false;
+    const std::wstring path = fullDirectory + L"\\" + CaptureName();
     const UINT width = static_cast<UINT>(windowWidth);
     const UINT height = static_cast<UINT>(windowHeight);
     std::vector<BYTE> rgb(static_cast<size_t>(width) * height * 3);
@@ -430,13 +509,13 @@ void Display() {
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     Text(54, 42, "VECTORFIELD  /  DEVELOPMENT LAB", Accent);
-    const char* headings[] = {"", "01    Vector fields", "02    Gravity field", "03    Particle advection", "04    Advection and diffusion", "05    Incompressible fluid", "06    Interactive smoke"};
+    const char* headings[] = {"", "01    Vector fields", "02    Gravity field", "03    Particle advection", "04    Advection and diffusion", "05    Incompressible fluid", "06    Interactive smoke", "07    Particle liquid / water"};
     Text(54, 77, headings[stage], TextColor, GLUT_BITMAP_HELVETICA_18);
-    Text(54, 102, stage >= 4 ? "Semi-Lagrangian transport / implicit diffusion / staggered velocities" : stage == 2 ? "Softened inverse-square acceleration / source superposition" : stage == 3 ? "dx/dt = u(x) / midpoint RK2 / fixed 1/120 second steps" : "Position -> vector -> magnitude -> divergence & curl", Muted);
+    Text(54, 102, stage == 7 ? "Predict positions -> neighbor search -> density constraints -> viscosity" : stage >= 4 ? "Semi-Lagrangian transport / implicit diffusion / staggered velocities" : stage == 2 ? "Softened inverse-square acceleration / source superposition" : stage == 3 ? "dx/dt = u(x) / midpoint RK2 / fixed 1/120 second steps" : "Position -> vector -> magnitude -> divergence & curl", Muted);
     Text(PanelX + 165, 45, "STAGE 0" + std::to_string(stage) + " / 07", Muted);
     DrawPlot();
     DrawPanel();
-    Text(54, 842, stage == 4 ? "Prescribed velocity transports dye. Pressure projection is introduced in stage 5." : stage >= 5 ? "Dye is a transported tracer.  2D incompressible flow; gas compressibility is not modeled." : stage == 3 ? "Cyan: moving tracers and last 80 substeps.  Arrow field supplies velocity, not force." : "Color: low magnitude (cyan) -> high (amber).  Display length does not change F.", Muted);
+    Text(54, 842, stage == 7 ? "2D liquid particles with gravity and density constraints. No gas coupling or phase changes yet." : stage == 4 ? "Prescribed velocity transports dye. Pressure projection is introduced in stage 5." : stage >= 5 ? "Dye is a transported tracer.  2D incompressible flow; gas compressibility is not modeled." : stage == 3 ? "Cyan: moving tracers and last 80 substeps.  Arrow field supplies velocity, not force." : "Color: low magnitude (cyan) -> high (amber).  Display length does not change F.", Muted);
     Text(PanelX, 829, captureStatus, Muted);
     if (captureRequested) {
         captureRequested = false;
@@ -485,19 +564,24 @@ void Keyboard(unsigned char key, int, int) {
     case 'p': case 'P': if (stage >= 5) projectionEnabled = !projectionEnabled; break;
     case 'b': case 'B': if (stage == 6) buoyancyEnabled = !buoyancyEnabled; break;
     case 'e': case 'E': if (stage == 6) emitterEnabled = !emitterEnabled; break;
-    case '[': diffusion = std::max(0.0,diffusion * 0.5); break;
-    case ']': diffusion = std::min(0.1,std::max(0.00001,diffusion * 2.0)); break;
+    case '[': if(stage==7)water.SetViscosity(water.Viscosity()*0.5);else diffusion=std::max(0.0,diffusion*0.5); break;
+    case ']': if(stage==7)water.SetViscosity(std::min(2.0,std::max(0.001,water.Viscosity()*2.0)));else diffusion=std::min(0.1,std::max(0.00001,diffusion*2.0));break;
+    case 'a':case 'A':if(stage==7)water.AddBlock(selected);break;
+    case 'd':case 'D':if(stage==7)water.SetRestDensity(water.RestDensity()>=1400?800:water.RestDensity()+100);break;
     case ' ': paused = !paused; break;
-    case '\t': stage = stage == AvailableStages ? 1 : stage + 1; ResetStage(); break;
+    case '\t': stage = stage == AvailableStages ? 1 : stage + 1; captureDirectory=L"captures\\stage-0"+std::to_wstring(stage);captureNameOverride.clear();captureAfter=-1;quitAfterCapture=false;ResetStage();break;
     case 'r': case 'R': ResetStage(); break;
     }
-    if (stage >= 4 && key >= '1' && key <= '4') fluid.SetPresetVelocity(fieldType,strength);
+    if (stage == 4 && key >= '1' && key <= '4') fluid.SetPresetVelocity(fieldType,strength);
+    if (stage == 7 && key == '1') water.SetViscosity(0.025);
+    if (stage == 7 && key == '2') water.SetViscosity(0.45);
+    if (stage == 7 && key == '3') water.SetViscosity(0.0);
     if (stage == 4 && (key == '+' || key == '=' || key == '-' || key == '_')) fluid.SetPresetVelocity(fieldType,strength);
     glutPostRedisplay();
 }
 
 void Special(int key, int, int) {
-    if (key >= GLUT_KEY_F1 && key < GLUT_KEY_F1 + AvailableStages) { stage = key - GLUT_KEY_F1 + 1; ResetStage(); glutPostRedisplay(); }
+    if (key >= GLUT_KEY_F1 && key < GLUT_KEY_F1 + AvailableStages) {stage=key-GLUT_KEY_F1+1;captureDirectory=L"captures\\stage-0"+std::to_wstring(stage);captureNameOverride.clear();captureAfter=-1;quitAfterCapture=false;ResetStage();glutPostRedisplay();}
     if (key == GLUT_KEY_F12) { captureRequested = true; glutPostRedisplay(); }
 }
 
@@ -511,7 +595,7 @@ void Mouse(int button, int state, int x, int y) {
         if (stage >= 4) {
             mouseHeld = button == GLUT_LEFT_BUTTON;
             lastMousePosition = selected;
-            fluid.AddDye((selected.x+2)/4.0,(selected.y+2)/4.0,0.8,0.05);
+            if(stage<=6)fluid.AddDye((selected.x+2)/4.0,(selected.y+2)/4.0,0.8,0.05);
         }
         if (stage == 2) {
             int nearest = -1;
@@ -548,7 +632,8 @@ void Motion(int x, int y) {
            std::max(-2.0,std::min(2.0,2.0-(py-PlotY)/PlotSize*4.0))};
     if (stage >= 4 && mouseHeld) {
         const Vec2 delta = p - lastMousePosition;
-        if (stage >= 5) fluid.AddVelocity((p.x+2)/4.0,(p.y+2)/4.0,delta.x*5.0*strength,delta.y*5.0*strength,0.06);
+        if (stage == 7) water.Stir(p,delta);
+        else if(stage>=5)fluid.AddVelocity((p.x+2)/4.0,(p.y+2)/4.0,delta.x*5.0*strength,delta.y*5.0*strength,0.06);
         lastMousePosition = p; selected = p; glutPostRedisplay(); return;
     }
     if (stage != 2 || !draggingSource || selectedSource < 0) return;
@@ -577,7 +662,11 @@ void Timer(int) {
                 tracer.trail.push_back(tracer.position);
                 if (tracer.trail.size() > 80) tracer.trail.pop_front();
             }
-            if (stage >= 4) {
+            if(stage==7){
+                if(stirDemo&&!stirDemoDone&&simulationTime>=1.2){water.Stir({0.3,-1.1},{0.18,0.16});stirDemoDone=true;}
+                water.Step(dt);
+            }
+            if (stage >= 4 && stage <=6) {
                 if (mouseHeld) fluid.AddDye((selected.x+2)/4.0,(selected.y+2)/4.0,24.0*dt,0.05);
                 if (stage == 4) fluid.StepDye(dt,diffusion);
                 else {
@@ -591,10 +680,11 @@ void Timer(int) {
                 }
             }
             simulationTime += dt; accumulator -= dt;
+            if(captureAfter>=0.0 && simulationTime+1e-9>=captureAfter)break;
         }
         glutPostRedisplay();
     }
-    if (captureAfter >= 0.0 && (stage >= 3 ? simulationTime : recordElapsed) >= captureAfter) {
+    if (captureAfter >= 0.0 && (stage >= 3 ? simulationTime+1e-9 : recordElapsed) >= captureAfter) {
         captureAfter = -1.0; captureRequested = true; glutPostRedisplay();
     }
     glutTimerFunc(16, Timer, 0);
@@ -603,7 +693,11 @@ void Timer(int) {
 
 int Run(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--self-test") == 0) return RunFieldMathTests() | RunDynamicsTests() | RunFluidGridTests();
+        if (std::strcmp(argv[i], "--self-test") == 0) {
+            int failed=RunFieldMathTests();
+            failed|=RunDynamicsTests(); failed|=RunFluidGridTests(); failed|=RunWaterParticleTests();
+            return failed;
+        }
         if (std::strcmp(argv[i], "--legacy") == 0) { LegacyMain(argc, argv); return 0; }
     }
     int wideCount = 0;
@@ -615,10 +709,12 @@ int Run(int argc, char** argv) {
             else if (std::wstring(wideArgs[i]) == L"--capture-after") captureAfter = _wtof(wideArgs[++i]);
             else if (std::wstring(wideArgs[i]) == L"--capture-name") captureNameOverride = wideArgs[++i];
             else if (std::wstring(wideArgs[i]) == L"--strength") requestedStrength = _wtof(wideArgs[++i]);
+            else if (std::wstring(wideArgs[i]) == L"--viscosity") requestedViscosity = _wtof(wideArgs[++i]);
         }
         for (int i = 1; i < wideCount; ++i) {
             if (std::wstring(wideArgs[i]) == L"--quit-after-capture") quitAfterCapture = true;
             if (std::wstring(wideArgs[i]) == L"--no-projection") requestedNoProjection = true;
+            if (std::wstring(wideArgs[i]) == L"--stir-demo") stirDemo = true;
         }
         LocalFree(wideArgs);
     }
@@ -633,6 +729,7 @@ int Run(int argc, char** argv) {
     if (requestedStrength > 0.0) strength = std::max(0.25,std::min(3.0,requestedStrength));
     if (stage == 4 && requestedStrength > 0.0) fluid.SetPresetVelocity(fieldType,strength);
     if (requestedNoProjection) projectionEnabled = false;
+    if (requestedViscosity >= 0.0) {if(stage==7)water.SetViscosity(requestedViscosity);else viscosity=std::min(0.1,requestedViscosity);}
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

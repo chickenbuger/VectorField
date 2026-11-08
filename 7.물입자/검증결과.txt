@@ -1,0 +1,185 @@
+PASS default vector is zero
+PASS 3-4 vector magnitude is 5
+PASS vector addition
+PASS vector subtraction
+PASS negative scalar multiplication
+PASS left scalar multiplication
+PASS scalar division
+PASS zero normalization stays finite zero
+PASS 3-4 vector normalization
+PASS negative vector normalization
+PASS large vector normalization avoids overflow
+PASS tiny vector normalization avoids underflow
+PASS nonfinite normalization has finite fallback
+PASS uniform field is position independent
+PASS rotation at (2,-3)
+PASS source at (2,-3)
+PASS saddle at (2,-3)
+PASS rotation origin is zero
+PASS source origin is zero
+PASS saddle origin is zero
+PASS rotation velocity is perpendicular to radius
+PASS source velocity points outward
+PASS uniform strength scales linearly
+PASS uniform negative strength reverses field
+PASS uniform zero strength gives zero vector
+PASS uniform divergence at h=0.010000
+PASS uniform curl at h=0.010000
+PASS uniform divergence at h=0.000100
+PASS uniform curl at h=0.000100
+PASS uniform divergence at h=0.000001
+PASS uniform curl at h=0.000001
+PASS uniform derivatives at origin
+PASS uniform derivatives scale with strength
+PASS rotation strength scales linearly
+PASS rotation negative strength reverses field
+PASS rotation zero strength gives zero vector
+PASS rotation divergence at h=0.010000
+PASS rotation curl at h=0.010000
+PASS rotation divergence at h=0.000100
+PASS rotation curl at h=0.000100
+PASS rotation divergence at h=0.000001
+PASS rotation curl at h=0.000001
+PASS rotation derivatives at origin
+PASS rotation derivatives scale with strength
+PASS source strength scales linearly
+PASS source negative strength reverses field
+PASS source zero strength gives zero vector
+PASS source divergence at h=0.010000
+PASS source curl at h=0.010000
+PASS source divergence at h=0.000100
+PASS source curl at h=0.000100
+PASS source divergence at h=0.000001
+PASS source curl at h=0.000001
+PASS source derivatives at origin
+PASS source derivatives scale with strength
+PASS saddle strength scales linearly
+PASS saddle negative strength reverses field
+PASS saddle zero strength gives zero vector
+PASS saddle divergence at h=0.010000
+PASS saddle curl at h=0.010000
+PASS saddle divergence at h=0.000100
+PASS saddle curl at h=0.000100
+PASS saddle divergence at h=0.000001
+PASS saddle curl at h=0.000001
+PASS saddle derivatives at origin
+PASS saddle derivatives scale with strength
+PASS central differences reject zero step
+PASS central differences reject negative step
+PASS central differences reject nonfinite step
+FieldMath tests: 69 passed, 0 failed, 69 total.
+PASS gravity with no sources is zero
+PASS softened gravity at source center is finite zero
+PASS center remains finite with very small epsilon
+PASS zero source mass produces zero acceleration
+PASS zero gravitational constant produces zero acceleration
+PASS gravity points toward the source
+PASS single source has reflection symmetry
+PASS single source is rotationally symmetric
+PASS gravity magnitude decreases with distance
+PASS inverse-square falloff approaches ratio four
+PASS source mass scales acceleration linearly
+PASS G scales acceleration linearly
+PASS negative G reverses acceleration
+PASS coincident duplicate sources equal doubled mass
+PASS equal sources cancel at the midpoint
+PASS equal sources cancel horizontal acceleration above midpoint
+PASS gravity obeys vector superposition
+PASS source order does not change the result
+PASS multiple source ordering changes only negligible roundoff
+PASS repeated gravity evaluation has no accumulated state
+PASS gravity is invariant under translating all positions
+PASS larger softening reduces near-source acceleration
+PASS coincident source does not hide other sources
+PASS RK2 integrates uniform velocity exactly
+PASS RK2 field overload matches callable overload
+PASS RK2 traces backward in a uniform field
+PASS RK2 zero velocity preserves position
+PASS RK2 zero dt preserves position
+PASS RK2 zero dt performs no velocity samples
+PASS RK2 takes two velocity samples per step
+PASS RK2 fixed point at rotational origin stays zero
+Rotation diagnostics (1000 x dt=0.01): RK2 radius error=1.25e-06, RK2 position error=0.000166666, Euler radius error=0.0512685, Euler position error=0.0512696
+PASS RK2 rotation radius drift after 1000 steps is below 2e-6
+PASS RK2 rotation position matches analytic orbit within 2e-4
+PASS RK2 rotation radius improves on Euler by over 1000x
+PASS RK2 rotation position improves on Euler by over 100x
+PASS RK2 zero strength preserves position
+PASS RK2 short source-field step matches exponential growth
+PASS halving RK2 step reduces source-field error by at least 3.5x
+PASS RK2 accepts a softened gravity-driven velocity callback
+PASS gravity rejects zero softening
+PASS RK2 rejects nonfinite dt
+PASS RK2 rejects nonfinite sampled velocity
+Dynamics tests: 42 passed, 0 failed, 42 total.
+PASS fluid zero state stays zero
+PASS fluid minimum resolution is safe
+PASS constant dye survives diffusion and backtracing
+PASS uniform velocity interpolates away from walls
+PASS wall normal velocity is zero
+PASS staggered bilinear velocity reproduces a linear field
+PASS cell velocity access matches center interpolation
+PASS dye sample uses four surrounding cell weights
+PASS out of bounds velocity samples clamp safely
+PASS dye centroid follows uniform flow in physical units
+PASS semi Lagrangian advection does not create a higher dye peak
+Fluid transport displacement: 0.25, 0.0625 (expected 0.25, 0.0625).
+PASS implicit diffusion lowers a compact dye peak
+PASS closed-wall diffusion approximately preserves dye sum
+Fluid diffusion peak: 2.999742804 -> 1.055901638; relative dye sum error: 7.281585768e-16.
+PASS MAC projection reduces divergence by at least 95 percent
+PASS projection diagnostic matches the measured final field
+PASS projection keeps walls impermeable
+Fluid pressure projection RMS divergence: 0.8590996313 -> 0.03896712157; max: 5.714772032 -> 0.1649796917.
+PASS pressure removes a global source field in a sealed box
+Fluid source field RMS divergence: 4.38178046 -> 0.01541696877.
+PASS invalid sources and time steps leave finite zero state
+PASS 300 buoyant nozzle steps stay finite and density bounded
+PASS 300 buoyant nozzle steps keep closed walls
+Fluid 300-step scenario (32x32): 0.8094107 s; final divergence RMS 1.343677719e-05; dye peak 1.173739087.
+PASS clear resets fields and diagnostics
+FluidGrid tests: 21 passed, 0 failed, 21 total.
+PASS water starts with 484 particles
+PASS water initial state is finite and inside the container
+PASS water particle mass is positive and finite
+PASS discrete rest lattice has no positive density excess
+PASS fixed water timestep is 1/120 second
+PASS gravity changes isolated particle velocity
+PASS semi-implicit gravity prediction changes position
+PASS isolated free-surface particle is not pulled to a target density
+PASS half timestep is accumulated before integration
+PASS two half frame intervals equal one fixed substep
+PASS invalid frame intervals do not advance time
+PASS wall and floor block particle penetration
+PASS wall collision removes outward normal velocity
+PASS floor collision removes downward normal velocity
+PASS injected initial positions are constrained to the container
+PASS zero gravity and zero velocity preserve an isolated particle position
+PASS coincident particles receive finite separating contact corrections
+METRIC water compressed-block mean excess: predicted=1.576088713 solved=0.001671957295
+PASS compressed block has nonzero predicted density excess
+PASS PBF correction reduces predicted mean density excess
+PASS compression metric equals the committed solved metric
+PASS compressed-block correction remains finite
+PASS XSPH viscosity reduces relative kinetic energy without gravity
+PASS symmetric viscosity preserves isolated pair linear momentum
+PASS viscosity is clamped to the stable material range
+PASS negative viscosity is not applied
+PASS stir input adds velocity to nearby fluid
+PASS stir input is spatially local
+PASS large stir input remains bounded and finite
+PASS add block creates additional liquid particles
+PASS added block respects container and capacity
+PASS rest density is independently configurable
+PASS changing rest density does not silently rescale particle mass
+PASS nonfinite injected state is rejected without modifying particles
+PASS nonfinite gravity is rejected
+PASS empty fluid has finite zero compression
+METRIC water 600 fixed steps: peak predicted mean excess=0.01517185105 peak solved mean excess=0.007935938964
+PASS 484-particle dam and stir stay finite for 600 substeps
+PASS 484-particle dam and stir stay inside the tank for 600 substeps
+PASS density projection never increases mean positive compression
+PASS fixed-step simulated time matches five seconds
+PASS closed liquid simulation conserves particle count
+PASS settled liquid mean compression remains below five percent
+Water particle tests: 41 passed, 0 failed.
